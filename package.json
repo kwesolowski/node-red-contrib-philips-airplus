@@ -13,11 +13,16 @@
   "license": "MIT",
   "author": "Krzysztof Wesolowski",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "auth": "node bin/philips-airplus-auth.js"
+  },
+  "bin": {
+    "philips-airplus-auth": "bin/philips-airplus-auth.js"
   },
   "dependencies": {
+    "mqtt": "^5.10.0",
     "openid-client": "^6.1.0",
-    "mqtt": "^5.10.0"
+    "playwright": "^1.57.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
