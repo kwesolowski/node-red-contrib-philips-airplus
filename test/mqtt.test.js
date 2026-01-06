@@ -127,10 +127,14 @@ describe('mqtt', () => {
             expect(client.isConnected()).toBe(true);
         });
 
-        it('subscribes to AWS IoT shadow topics', async () => {
+        it('subscribes to AWS IoT shadow topics for authorized device', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -148,10 +152,39 @@ describe('mqtt', () => {
             expect(subs).toContain('$aws/things/dev-123/shadow/update/delta');
         });
 
+        it('skips subscription for unauthorized devices', async () => {
+            client = createMqttClient({
+                getMqttInfo: () =>
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
+                mqttLib: mockMqttLib,
+            });
+
+            const connectPromise = client.connect();
+            setTimeout(() => mockMqttLib.getLastClient().simulateConnect(), 10);
+            await connectPromise;
+
+            // Try to subscribe to a different device
+            client.subscribeDevice('dev-456');
+
+            // Should not have subscribed to dev-456 topics
+            const subs = mockMqttLib.getLastClient().subscriptions;
+            expect(subs).not.toContain('$aws/things/dev-456/shadow/get/accepted');
+            // But the device is tracked for future use
+            expect(client.getSubscribedDevices()).toContain('dev-456');
+        });
+
         it('publishes to shadow/get to request state', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -184,7 +217,11 @@ describe('mqtt', () => {
         it('publishes desired state to shadow/update', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -220,7 +257,11 @@ describe('mqtt', () => {
             const onStateChange = jest.fn();
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 onStateChange,
                 mqttLib: mockMqttLib,
             });
@@ -248,7 +289,11 @@ describe('mqtt', () => {
         it('rejects request on shadow/get/rejected', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -273,7 +318,11 @@ describe('mqtt', () => {
         it('unsubscribes from device topics', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -291,7 +340,11 @@ describe('mqtt', () => {
         it('disconnects cleanly', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
@@ -338,7 +391,11 @@ describe('mqtt', () => {
         it('times out if no response received', async () => {
             client = createMqttClient({
                 getMqttInfo: () =>
-                    Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
+                    Promise.resolve({
+                        host: 'wss://mqtt.example.com',
+                        client_id: 'c',
+                        device_id: 'dev-123',
+                    }),
                 mqttLib: mockMqttLib,
             });
 
