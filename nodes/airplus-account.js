@@ -236,6 +236,15 @@ module.exports = function (RED) {
             // Subscribe to MQTT if connected
             if (mqttClient && mqttClient.isConnected()) {
                 mqttClient.subscribeDevice(deviceId);
+
+                // Request initial state if this is the authorized device
+                const authorizedDevice = mqttClient.getAuthorizedDevice();
+                if (deviceId === authorizedDevice && !deviceStatus.has(deviceId)) {
+                    node.log(`Requesting initial state for ${deviceId}`);
+                    mqttClient.getDeviceState(deviceId).catch((err) => {
+                        node.warn(`Failed to get initial state: ${err.message}`);
+                    });
+                }
             }
 
             updateStatus();
