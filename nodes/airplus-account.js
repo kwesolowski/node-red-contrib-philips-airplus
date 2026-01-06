@@ -49,7 +49,7 @@ module.exports = function (RED) {
         node.name = config.name || 'Philips Air+';
 
         // State
-        let mqttClient = null;
+        const mqttClients = new Map(); // deviceId -> mqttClient
         let apiClient = null;
         let tokenSet = null; // openid-client TokenSet
         let deviceCache = [];
@@ -113,13 +113,36 @@ module.exports = function (RED) {
                 expiresAt: String(newTokenSet.expires_at || 0),
             };
 
+            // Write to CLI file FIRST (single source of truth)
+            try {
+                const dir = path.dirname(CREDENTIALS_FILE);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                fs.writeFileSync(
+                    CREDENTIALS_FILE,
+                    JSON.stringify(
+                        {
+                            user_id: userId,
+                            refresh_token: newTokenSet.refresh_token,
+                            expires_at: newTokenSet.expires_at || 0,
+                            saved_at: new Date().toISOString(),
+                        },
+                        null,
+                        2
+                    )
+                );
+                node.log('Credentials written to CLI file');
+            } catch (err) {
+                node.error(`Failed to write credentials to CLI file: ${err.message}`);
+            }
+
             // Update in-memory credentials
             node.credentials = credentials;
             tokenSet = newTokenSet;
 
-            // Persist to Node-RED credential storage (survives restart)
+            // Also persist to Node-RED (backup, but CLI file is authoritative)
             RED.nodes.addCredentials(node.id, credentials);
-            node.log('Credentials persisted after token refresh');
 
             // Clear API token cache on credential update
             getApiClient().clearToken();
@@ -139,60 +162,68 @@ module.exports = function (RED) {
             }
         }
 
-        // MQTT connection
+        // MQTT connection - creates one client per device
         async function connectMqtt() {
-            if (mqttClient) {
-                mqttClient.disconnect();
+            // Disconnect existing clients
+            for (const [deviceId, client] of mqttClients) {
+                node.log(`Disconnecting existing client for ${deviceId}`);
+                client.disconnect();
+            }
+            mqttClients.clear();
+
+            if (deviceCache.length === 0) {
+                node.warn('No devices to connect');
+                return;
             }
 
-            try {
-                mqttClient = createMqttClient({
-                    getMqttInfo: async () => {
-                        const userId = await ensureValidToken();
-                        const client = getApiClient();
-                        const deviceIds = deviceCache.map((d) => d.id);
-                        if (deviceIds.length === 0) {
-                            throw new Error('No devices to connect');
-                        }
-                        node.log(`Getting MQTT info for ${deviceIds.length} device(s)`);
-                        const mqttInfos = await client.getMqttInfo(userId, deviceIds);
-                        if (!mqttInfos || mqttInfos.length === 0) {
-                            throw new Error('No MQTT info returned');
-                        }
-                        node.log(`Got MQTT info for device ${mqttInfos[0].device_id}`);
-                        // Return first device's MQTT info (all devices share same broker)
-                        return mqttInfos[0];
-                    },
+            // Get MQTT credentials for all devices
+            const userId = await ensureValidToken();
+            const client = getApiClient();
+            const deviceIds = deviceCache.map((d) => d.id);
+            node.log(`Getting MQTT info for ${deviceIds.length} device(s)`);
+            const mqttInfos = await client.getMqttInfo(userId, deviceIds);
+
+            if (!mqttInfos || mqttInfos.length === 0) {
+                throw new Error('No MQTT info returned');
+            }
+
+            // Create MQTT client for each device
+            for (const mqttInfo of mqttInfos) {
+                const deviceId = mqttInfo.device_id;
+                const device = deviceCache.find((d) => d.id === deviceId);
+                const deviceName = device?.name || deviceId;
+
+                node.log(`Creating MQTT client for ${deviceName} (${deviceId})`);
+
+                const mqttClient = createMqttClient({
+                    getMqttInfo: async () => mqttInfo,
                     onStateChange: handleStateChange,
                     onConnect: () => {
-                        node.log('MQTT connected');
+                        node.log(`MQTT connected: ${deviceName}`);
                         updateStatus();
                     },
                     onDisconnect: () => {
-                        node.warn('MQTT disconnected');
+                        node.warn(`MQTT disconnected: ${deviceName}`);
                         updateStatus();
                     },
                     onError: (err) => {
-                        node.error(`MQTT error: ${err.message}`);
+                        node.error(`MQTT error (${deviceName}): ${err.message}`);
                     },
                     log: (msg) => node.log(msg),
                 });
 
-                await mqttClient.connect();
+                mqttClients.set(deviceId, mqttClient);
 
-                // Subscribe only to the first device (MQTT credentials are per-device)
-                // TODO: Consider getting separate MQTT credentials for each device
-                if (deviceCache.length > 0) {
-                    const firstDevice = deviceCache[0];
-                    node.log(`Subscribing to device: ${firstDevice.name} (${firstDevice.id})`);
-                    mqttClient.subscribeDevice(firstDevice.id);
+                try {
+                    await mqttClient.connect();
+                    mqttClient.subscribeDevice(deviceId);
+                    node.log(`MQTT connected and subscribed: ${deviceName}`);
+                } catch (err) {
+                    node.error(`MQTT connection failed for ${deviceName}: ${err.message}`);
                 }
-
-                node.log('MQTT connection established');
-            } catch (err) {
-                node.error(`MQTT connection failed: ${err.message}`);
-                throw err;
             }
+
+            node.log(`MQTT connections established for ${mqttClients.size} device(s)`);
         }
 
         function handleStateChange(deviceId, state, type) {
@@ -226,11 +257,15 @@ module.exports = function (RED) {
         function updateStatus() {
             if (!isAuthenticated()) {
                 node.status({ fill: 'grey', shape: 'ring', text: 'not authenticated' });
-            } else if (mqttClient && mqttClient.isConnected()) {
-                const count = mqttClient.getSubscribedDevices().length;
-                node.status({ fill: 'green', shape: 'dot', text: `connected (${count} devices)` });
             } else {
-                node.status({ fill: 'yellow', shape: 'ring', text: 'disconnected' });
+                const connectedCount = Array.from(mqttClients.values()).filter((c) => c.isConnected()).length;
+                if (connectedCount > 0) {
+                    node.status({ fill: 'green', shape: 'dot', text: `connected (${connectedCount} devices)` });
+                } else if (mqttClients.size > 0) {
+                    node.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
+                } else {
+                    node.status({ fill: 'yellow', shape: 'ring', text: 'disconnected' });
+                }
             }
         }
 
@@ -242,18 +277,19 @@ module.exports = function (RED) {
             }
             statusCallbacks.get(deviceId).add(callback);
 
-            // Subscribe to MQTT if connected
+            // Get client for this device
+            const mqttClient = mqttClients.get(deviceId);
             if (mqttClient && mqttClient.isConnected()) {
                 mqttClient.subscribeDevice(deviceId);
 
-                // Request initial state if this is the authorized device
+                // Request initial state
                 // Delay to allow subscriptions to complete (SUBACK is async)
-                const authorizedDevice = mqttClient.getAuthorizedDevice();
-                if (deviceId === authorizedDevice && !deviceStatus.has(deviceId)) {
+                if (!deviceStatus.has(deviceId)) {
                     setTimeout(() => {
-                        if (mqttClient && mqttClient.isConnected() && !deviceStatus.has(deviceId)) {
+                        const client = mqttClients.get(deviceId);
+                        if (client && client.isConnected() && !deviceStatus.has(deviceId)) {
                             node.log(`Requesting initial state for ${deviceId}`);
-                            mqttClient.getDeviceState(deviceId).catch((err) => {
+                            client.getDeviceState(deviceId).catch((err) => {
                                 node.warn(`Failed to get initial state: ${err.message}`);
                             });
                         }
@@ -273,6 +309,7 @@ module.exports = function (RED) {
                 callbacks.delete(callback);
                 if (callbacks.size === 0) {
                     statusCallbacks.delete(deviceId);
+                    const mqttClient = mqttClients.get(deviceId);
                     if (mqttClient) {
                         mqttClient.unsubscribeDevice(deviceId);
                     }
@@ -289,26 +326,57 @@ module.exports = function (RED) {
             return deviceStatus.get(deviceId) || null;
         };
 
-        node.isConnected = function () {
-            return mqttClient && mqttClient.isConnected();
+        node.isConnected = function (deviceId) {
+            if (deviceId) {
+                const client = mqttClients.get(deviceId);
+                return client && client.isConnected();
+            }
+            // Any device connected
+            return Array.from(mqttClients.values()).some((c) => c.isConnected());
         };
 
         node.getDeviceState = async function (deviceId) {
+            const mqttClient = mqttClients.get(deviceId);
             if (!mqttClient || !mqttClient.isConnected()) {
-                throw new Error('Not connected');
+                throw new Error(`Not connected to device ${deviceId}`);
             }
             return mqttClient.getDeviceState(deviceId);
         };
 
         node.updateDeviceState = async function (deviceId, desiredState) {
+            const mqttClient = mqttClients.get(deviceId);
             if (!mqttClient || !mqttClient.isConnected()) {
-                throw new Error('Not connected');
+                throw new Error(`Not connected to device ${deviceId}`);
             }
             return mqttClient.updateDeviceState(deviceId, desiredState);
         };
 
+        // Load credentials from CLI file (single source of truth)
+        function loadCredentialsFromCliFile() {
+            try {
+                if (fs.existsSync(CREDENTIALS_FILE)) {
+                    const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+                    if (data.user_id && data.refresh_token) {
+                        node.credentials = {
+                            userId: data.user_id,
+                            refreshToken: data.refresh_token,
+                            expiresAt: String(data.expires_at || 0),
+                        };
+                        node.log(`Loaded credentials from CLI file (user: ${data.user_id})`);
+                        return true;
+                    }
+                }
+            } catch (err) {
+                node.warn(`Failed to load CLI credentials: ${err.message}`);
+            }
+            return false;
+        }
+
         // Initialize on startup
         async function initialize() {
+            // Always load from CLI file first (single source of truth)
+            loadCredentialsFromCliFile();
+
             node.log(`Initializing... userId=${getUserId()}, hasRefreshToken=${!!getRefreshToken()}`);
 
             if (!isAuthenticated()) {
@@ -338,10 +406,11 @@ module.exports = function (RED) {
 
         // Cleanup on close
         node.on('close', function (done) {
-            if (mqttClient) {
-                mqttClient.disconnect();
-                mqttClient = null;
+            for (const [deviceId, client] of mqttClients) {
+                node.log(`Disconnecting client for ${deviceId}`);
+                client.disconnect();
             }
+            mqttClients.clear();
             deviceCache = [];
             deviceStatus.clear();
             statusCallbacks.clear();
