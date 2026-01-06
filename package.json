@@ -20,6 +20,7 @@
     "philips-airplus-auth": "bin/philips-airplus-auth.js"
   },
   "dependencies": {
+    "cockatiel": "^3.2.1",
     "mqtt": "^5.10.0",
     "openid-client": "^5.7.0",
     "playwright": "^1.57.0"
