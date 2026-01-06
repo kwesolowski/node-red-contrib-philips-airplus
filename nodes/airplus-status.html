@@ -1,0 +1,133 @@
+<script type="text/javascript">
+    RED.nodes.registerType('airplus-status', {
+        category: 'Philips Air+',
+        color: '#3498db',
+        defaults: {
+            name: { value: '' },
+            account: { value: '', type: 'airplus-account', required: true },
+            device: { value: '' },
+            deviceName: { value: '' }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'font-awesome/fa-cloud',
+        paletteLabel: 'air+ status',
+        label: function() {
+            return this.name || this.deviceName || 'air+ status';
+        },
+        oneditprepare: function() {
+            var node = this;
+            var deviceSelect = $('#node-input-device');
+            var deviceNameInput = $('#node-input-deviceName');
+
+            function loadDevices() {
+                var accountId = $('#node-input-account').val();
+                if (!accountId) {
+                    deviceSelect.empty().append('<option value="">-- Select account first --</option>');
+                    return;
+                }
+
+                deviceSelect.empty().append('<option value="">Loading...</option>');
+
+                $.getJSON('philips-airplus/devices?account=' + accountId, function(devices) {
+                    deviceSelect.empty();
+
+                    if (devices.length === 0) {
+                        deviceSelect.append('<option value="">-- No devices found --</option>');
+                        return;
+                    }
+
+                    deviceSelect.append('<option value="">-- Select device --</option>');
+                    devices.forEach(function(d) {
+                        var label = d.name + (d.model ? ' (' + d.model + ')' : '');
+                        var option = $('<option></option>')
+                            .val(d.id)
+                            .text(label)
+                            .data('name', d.name);
+                        if (d.id === node.device) {
+                            option.prop('selected', true);
+                        }
+                        deviceSelect.append(option);
+                    });
+                }).fail(function() {
+                    deviceSelect.empty().append('<option value="">-- Failed to load --</option>');
+                });
+            }
+
+            // Load devices when account changes
+            $('#node-input-account').on('change', loadDevices);
+
+            // Update device name when device changes
+            deviceSelect.on('change', function() {
+                var selected = $(this).find(':selected');
+                var name = selected.data('name') || '';
+                deviceNameInput.val(name);
+            });
+
+            // Initial load
+            loadDevices();
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="airplus-status">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-account"><i class="fa fa-user"></i> Account</label>
+        <input type="text" id="node-input-account">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-device"><i class="fa fa-desktop"></i> Device</label>
+        <select id="node-input-device" style="width: 70%;">
+            <option value="">-- Select device --</option>
+        </select>
+    </div>
+
+    <input type="hidden" id="node-input-deviceName">
+</script>
+
+<script type="text/html" data-help-name="airplus-status">
+    <p>Receives status updates from a Philips Air+ device.</p>
+
+    <h3>Inputs</h3>
+    <p>Any input message triggers an immediate output of the current device status.</p>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Device status including:
+            <ul>
+                <li><code>power</code> - boolean, device on/off</li>
+                <li><code>mode</code> - string: auto, sleep, turbo, manual</li>
+                <li><code>fanSpeed</code> - number 1-18</li>
+                <li><code>pm25</code> - PM2.5 level in ug/m3</li>
+                <li><code>humidity</code> - relative humidity %</li>
+                <li><code>temperature</code> - temperature in celsius</li>
+                <li><code>filterLife</code> - filter hours remaining</li>
+                <li><code>timestamp</code> - last update timestamp</li>
+            </ul>
+        </dd>
+        <dt>deviceId <span class="property-type">string</span></dt>
+        <dd>Unique device identifier</dd>
+        <dt>deviceName <span class="property-type">string</span></dt>
+        <dd>Human-readable device name</dd>
+        <dt>updateType <span class="property-type">string</span></dt>
+        <dd>Type of update: status, filter, config, initial, manual</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This node subscribes to real-time updates from a Philips Air+ purifier
+    or humidifier via the cloud API.</p>
+
+    <p>Status updates are pushed automatically when the device state changes.
+    You can also inject any message to trigger an immediate status output.</p>
+
+    <h3>Status</h3>
+    <p>The node displays current readings in its status:
+    power state, PM2.5 level, and humidity.</p>
+</script>

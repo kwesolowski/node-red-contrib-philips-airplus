@@ -1,0 +1,206 @@
+<script type="text/javascript">
+    RED.nodes.registerType('airplus-account', {
+        category: 'config',
+        defaults: {
+            name: { value: '' }
+        },
+        credentials: {
+            accessToken: { type: 'password' },
+            refreshToken: { type: 'password' },
+            expiresAt: { type: 'text' }
+        },
+        label: function() {
+            return this.name || 'Philips Air+';
+        },
+        oneditprepare: function() {
+            var node = this;
+
+            // Check auth status
+            function updateAuthStatus() {
+                var hasToken = node.credentials && node.credentials.hasOwnProperty('accessToken');
+                var expiresAt = node.credentials ? node.credentials.expiresAt : null;
+
+                if (hasToken && expiresAt) {
+                    var expDate = new Date(parseInt(expiresAt, 10));
+                    var now = new Date();
+                    if (expDate > now) {
+                        $('#auth-status').text('Authenticated until ' + expDate.toLocaleString())
+                            .removeClass('auth-error').addClass('auth-success');
+                        $('#auth-section-new').hide();
+                        $('#auth-section-authenticated').show();
+                    } else {
+                        $('#auth-status').text('Token expired')
+                            .removeClass('auth-success').addClass('auth-error');
+                        $('#auth-section-new').show();
+                        $('#auth-section-authenticated').hide();
+                    }
+                } else {
+                    $('#auth-status').text('Not authenticated')
+                        .removeClass('auth-success').addClass('auth-error');
+                    $('#auth-section-new').show();
+                    $('#auth-section-authenticated').hide();
+                }
+            }
+
+            // Get authorization URL
+            $('#auth-get-url').on('click', function() {
+                $(this).prop('disabled', true).text('Getting URL...');
+
+                $.ajax({
+                    url: 'philips-airplus/auth/start',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ node: node.id }),
+                    success: function(data) {
+                        $('#auth-url-display').val(data.url).show();
+                        $('#auth-url-copy').show();
+                        $('#auth-step2').show();
+                        $('#auth-get-url').prop('disabled', false).text('1. Get Auth URL');
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Failed to get auth URL: ' + error, 'error');
+                        $('#auth-get-url').prop('disabled', false).text('1. Get Auth URL');
+                    }
+                });
+            });
+
+            // Copy URL to clipboard
+            $('#auth-url-copy').on('click', function() {
+                var url = $('#auth-url-display').val();
+                navigator.clipboard.writeText(url).then(function() {
+                    RED.notify('URL copied to clipboard', 'success');
+                });
+            });
+
+            // Exchange code for tokens
+            $('#auth-exchange').on('click', function() {
+                var redirectUrl = $('#auth-redirect-input').val().trim();
+                if (!redirectUrl) {
+                    RED.notify('Please paste the redirect URL', 'error');
+                    return;
+                }
+
+                $(this).prop('disabled', true).text('Exchanging...');
+
+                $.ajax({
+                    url: 'philips-airplus/auth/complete',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        node: node.id,
+                        redirect_url: redirectUrl
+                    }),
+                    success: function(data) {
+                        if (data.success) {
+                            RED.notify('Authentication successful!', 'success');
+                            // Update credentials in local node object
+                            node.credentials = node.credentials || {};
+                            node.credentials.expiresAt = String(data.expiresAt);
+                            updateAuthStatus();
+                            // Hide auth flow
+                            $('#auth-url-display').hide();
+                            $('#auth-url-copy').hide();
+                            $('#auth-step2').hide();
+                            $('#auth-redirect-input').val('');
+                        } else {
+                            RED.notify('Authentication failed: ' + (data.error || 'Unknown'), 'error');
+                        }
+                        $('#auth-exchange').prop('disabled', false).text('3. Exchange Code');
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Authentication failed: ' + error, 'error');
+                        $('#auth-exchange').prop('disabled', false).text('3. Exchange Code');
+                    }
+                });
+            });
+
+            // Re-authenticate button
+            $('#auth-reauth').on('click', function() {
+                $('#auth-section-new').show();
+                $('#auth-section-authenticated').hide();
+            });
+
+            updateAuthStatus();
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="airplus-account">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="Philips Air+">
+    </div>
+
+    <div class="form-row">
+        <label><i class="fa fa-key"></i> Authentication</label>
+        <span id="auth-status" style="margin-left: 10px; font-weight: bold;"></span>
+    </div>
+
+    <div id="auth-section-authenticated" style="display: none; margin-left: 100px; margin-bottom: 20px;">
+        <button type="button" id="auth-reauth" class="red-ui-button">Re-authenticate</button>
+    </div>
+
+    <div id="auth-section-new" style="margin-left: 100px;">
+        <div class="form-row" style="margin-bottom: 10px;">
+            <button type="button" id="auth-get-url" class="red-ui-button">1. Get Auth URL</button>
+        </div>
+
+        <div class="form-row" style="margin-bottom: 10px;">
+            <input type="text" id="auth-url-display" readonly style="width: 100%; display: none;"
+                   placeholder="Authorization URL will appear here">
+            <button type="button" id="auth-url-copy" class="red-ui-button" style="display: none; margin-top: 5px;">
+                Copy URL
+            </button>
+        </div>
+
+        <div id="auth-step2" style="display: none;">
+            <div class="form-row">
+                <p style="font-size: 12px; color: #666;">
+                    2. Open the URL in your browser, log in to your Philips account,
+                    then copy the redirect URL (starts with <code>com.philips.air://</code>)
+                    and paste it below:
+                </p>
+            </div>
+
+            <div class="form-row" style="margin-bottom: 10px;">
+                <input type="text" id="auth-redirect-input" style="width: 100%;"
+                       placeholder="Paste redirect URL here (com.philips.air://loginredirect?code=...)">
+            </div>
+
+            <div class="form-row">
+                <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-small">
+                    3. Exchange Code
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .auth-success { color: #2ecc71; }
+        .auth-error { color: #e74c3c; }
+    </style>
+</script>
+
+<script type="text/html" data-help-name="airplus-account">
+    <p>Configuration node for Philips Air+ cloud account.</p>
+
+    <h3>Authentication</h3>
+    <p>This node uses OAuth to authenticate with the Philips cloud:</p>
+    <ol>
+        <li>Click "Get Auth URL" to generate an authorization URL</li>
+        <li>Open the URL in your browser and log in to your Philips account</li>
+        <li>After login, you'll be redirected to a URL starting with <code>com.philips.air://</code></li>
+        <li>Copy that entire redirect URL and paste it in the input field</li>
+        <li>Click "Exchange Code" to complete authentication</li>
+    </ol>
+
+    <h3>Connection</h3>
+    <p>Once authenticated, the node maintains a WebSocket connection to receive
+    real-time device updates via MQTT.</p>
+
+    <h3>Token Refresh</h3>
+    <p>Tokens are automatically refreshed before expiration. If refresh fails,
+    you'll need to re-authenticate.</p>
+</script>

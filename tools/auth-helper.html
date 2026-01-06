@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Philips Air+ Auth Helper</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .step { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px; }
+        .step h3 { margin-top: 0; }
+        input, textarea { width: 100%; padding: 10px; margin: 10px 0; font-family: monospace; font-size: 12px; }
+        button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #2980b9; }
+        #result { background: #e8f5e9; padding: 15px; border-radius: 8px; display: none; }
+        #result.error { background: #ffebee; }
+        code { background: #eee; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Philips Air+ Auth Helper</h1>
+
+    <div class="step">
+        <h3>Step 1: Generate Auth URL</h3>
+        <p>Click to generate a new authorization URL:</p>
+        <button onclick="generateAuthUrl()">Generate Auth URL</button>
+        <textarea id="authUrl" rows="4" readonly placeholder="Auth URL will appear here..."></textarea>
+        <button onclick="copyAndOpen()" id="openBtn" style="display:none;">Copy & Open in Browser</button>
+    </div>
+
+    <div class="step">
+        <h3>Step 2: After Login</h3>
+        <p>After logging in, your browser will try to redirect to <code>com.philips.air://...</code></p>
+        <p>This will fail (that's OK!). Look for the URL in:</p>
+        <ul>
+            <li>Your browser's address bar (might flash briefly)</li>
+            <li>Network tab in Developer Tools</li>
+            <li>The error page might show the URL</li>
+        </ul>
+        <p>Paste whatever URL you can find here:</p>
+        <textarea id="redirectUrl" rows="3" placeholder="Paste the redirect URL here..."></textarea>
+        <button onclick="extractCode()">Extract Code</button>
+    </div>
+
+    <div id="result">
+        <h3>Result</h3>
+        <p id="resultText"></p>
+        <p><strong>Code:</strong></p>
+        <textarea id="codeOutput" rows="2" readonly></textarea>
+        <button onclick="copyCode()">Copy Code</button>
+    </div>
+
+    <script>
+        let pkceVerifier = '';
+
+        function generateRandomString(length) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+            let result = '';
+            const randomValues = new Uint8Array(length);
+            crypto.getRandomValues(randomValues);
+            for (let i = 0; i < length; i++) {
+                result += chars[randomValues[i] % chars.length];
+            }
+            return result;
+        }
+
+        async function generateCodeChallenge(verifier) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(verifier);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
+
+        async function generateAuthUrl() {
+            pkceVerifier = generateRandomString(43);
+            const challenge = await generateCodeChallenge(pkceVerifier);
+            const state = generateRandomString(16);
+
+            // Store verifier in localStorage for later
+            localStorage.setItem('philips_pkce_verifier', pkceVerifier);
+            localStorage.setItem('philips_pkce_state', state);
+
+            const params = new URLSearchParams({
+                client_id: '-XsK7O6iEkLml77yDGDUi0ku',
+                code_challenge: challenge,
+                code_challenge_method: 'S256',
+                response_type: 'code',
+                response_mode: 'query',
+                redirect_uri: 'com.philips.air://loginredirect',
+                ui_locales: 'en-US',
+                state: state,
+                nonce: generateRandomString(16),
+                scope: 'openid email profile address DI.Account.read DI.Account.write DI.AccountProfile.read DI.AccountProfile.write DI.AccountGeneralConsent.read DI.AccountGeneralConsent.write DI.GeneralConsent.read subscriptions profile_extended consents DI.AccountSubscription.read DI.AccountSubscription.write'
+            });
+
+            const url = `https://cdc.accounts.home.id/oidc/op/v1.0/4_JGZWlP8eQHpEqkvQElolbA/authorize?${params.toString()}`;
+
+            document.getElementById('authUrl').value = url;
+            document.getElementById('openBtn').style.display = 'inline-block';
+        }
+
+        function copyAndOpen() {
+            const url = document.getElementById('authUrl').value;
+            navigator.clipboard.writeText(url);
+            window.open(url, '_blank');
+        }
+
+        function extractCode() {
+            const input = document.getElementById('redirectUrl').value.trim();
+            const resultDiv = document.getElementById('result');
+            const resultText = document.getElementById('resultText');
+            const codeOutput = document.getElementById('codeOutput');
+
+            resultDiv.style.display = 'block';
+            resultDiv.classList.remove('error');
+
+            // Try to extract code from various formats
+            let code = null;
+
+            // Check for code= in URL
+            const codeMatch = input.match(/[?&]code=([^&]+)/);
+            if (codeMatch) {
+                code = decodeURIComponent(codeMatch[1]);
+            }
+
+            // If input looks like just a code (st2.xxx.xxx format)
+            if (!code && input.match(/^st\d+\.[A-Za-z0-9_-]+/)) {
+                code = input.split('&')[0];
+            }
+
+            if (code) {
+                resultText.textContent = 'Successfully extracted authorization code!';
+                codeOutput.value = code;
+
+                // Also show the verifier for manual token exchange
+                const verifier = localStorage.getItem('philips_pkce_verifier');
+                if (verifier) {
+                    resultText.innerHTML += `<br><br><strong>PKCE Verifier (save this!):</strong><br><code>${verifier}</code>`;
+                }
+            } else {
+                resultDiv.classList.add('error');
+                resultText.textContent = 'Could not extract code. Make sure you copied the full redirect URL.';
+                codeOutput.value = '';
+            }
+        }
+
+        function copyCode() {
+            const code = document.getElementById('codeOutput').value;
+            navigator.clipboard.writeText(code);
+            alert('Code copied to clipboard!');
+        }
+    </script>
+</body>
+</html>
