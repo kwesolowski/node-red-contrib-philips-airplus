@@ -59,7 +59,9 @@ module.exports = function (RED) {
         // Get API client singleton
         function getApiClient() {
             if (!apiClient) {
-                apiClient = createApiClient();
+                apiClient = createApiClient({
+                    log: (msg) => node.log(msg),
+                });
             }
             return apiClient;
         }
@@ -143,10 +145,12 @@ module.exports = function (RED) {
                         if (deviceIds.length === 0) {
                             throw new Error('No devices to connect');
                         }
+                        node.log(`Getting MQTT info for ${deviceIds.length} device(s)`);
                         const mqttInfos = await client.getMqttInfo(userId, deviceIds);
                         if (!mqttInfos || mqttInfos.length === 0) {
                             throw new Error('No MQTT info returned');
                         }
+                        node.log(`Got MQTT info for device ${mqttInfos[0].device_id}`);
                         // Return first device's MQTT info (all devices share same broker)
                         return mqttInfos[0];
                     },
@@ -162,13 +166,17 @@ module.exports = function (RED) {
                     onError: (err) => {
                         node.error(`MQTT error: ${err.message}`);
                     },
+                    log: (msg) => node.log(msg),
                 });
 
                 await mqttClient.connect();
 
-                // Subscribe to all devices
-                for (const device of deviceCache) {
-                    mqttClient.subscribeDevice(device.id);
+                // Subscribe only to the first device (MQTT credentials are per-device)
+                // TODO: Consider getting separate MQTT credentials for each device
+                if (deviceCache.length > 0) {
+                    const firstDevice = deviceCache[0];
+                    node.log(`Subscribing to device: ${firstDevice.name} (${firstDevice.id})`);
+                    mqttClient.subscribeDevice(firstDevice.id);
                 }
 
                 node.log('MQTT connection established');
@@ -278,19 +286,29 @@ module.exports = function (RED) {
 
         // Initialize on startup
         async function initialize() {
+            node.log(`Initializing... userId=${getUserId()}, hasRefreshToken=${!!getRefreshToken()}`);
+
             if (!isAuthenticated()) {
+                node.log('Not authenticated, skipping initialization');
                 updateStatus();
                 return;
             }
 
             try {
+                node.log('Fetching devices...');
                 await fetchDevices();
+                node.log(`Fetched ${deviceCache.length} device(s)`);
+
                 if (deviceCache.length > 0) {
+                    node.log('Connecting to MQTT...');
                     await connectMqtt();
+                } else {
+                    node.warn('No devices found, skipping MQTT connection');
                 }
                 updateStatus();
             } catch (err) {
                 node.error(`Initialization failed: ${err.message}`);
+                node.error(err.stack);
                 updateStatus();
             }
         }
@@ -405,9 +423,11 @@ module.exports = function (RED) {
 
     // Check if CLI credentials file exists
     RED.httpAdmin.get('/philips-airplus/cli-credentials', function (req, res) {
+        RED.log.debug(`[airplus] Checking CLI credentials at ${CREDENTIALS_FILE}`);
         try {
             if (fs.existsSync(CREDENTIALS_FILE)) {
                 const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+                RED.log.debug(`[airplus] CLI credentials found for user ${data.user_id}`);
                 res.json({
                     exists: true,
                     userId: data.user_id,
@@ -415,9 +435,11 @@ module.exports = function (RED) {
                     savedAt: data.saved_at,
                 });
             } else {
+                RED.log.debug('[airplus] CLI credentials file not found');
                 res.json({ exists: false });
             }
         } catch (err) {
+            RED.log.error(`[airplus] Error reading CLI credentials: ${err.message}`);
             res.json({ exists: false, error: err.message });
         }
     });
@@ -425,27 +447,44 @@ module.exports = function (RED) {
     // Load credentials from CLI file into node
     RED.httpAdmin.post('/philips-airplus/load-cli-credentials', function (req, res) {
         const nodeId = req.body.node;
+        RED.log.info(`[airplus] Loading CLI credentials for node ${nodeId}`);
+
         if (!nodeId) {
+            RED.log.error('[airplus] Missing node ID in load request');
             return res.status(400).json({ error: 'Missing node ID' });
         }
 
         try {
             if (!fs.existsSync(CREDENTIALS_FILE)) {
+                RED.log.error(`[airplus] Credentials file not found at ${CREDENTIALS_FILE}`);
                 return res.status(404).json({ error: 'Credentials file not found. Run: npx philips-airplus-auth' });
             }
 
             const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+            RED.log.debug(`[airplus] Read credentials: user_id=${data.user_id}, has_refresh=${!!data.refresh_token}`);
 
             if (!data.user_id || !data.refresh_token) {
+                RED.log.error('[airplus] Invalid credentials file: missing user_id or refresh_token');
                 return res.status(400).json({ error: 'Invalid credentials file' });
             }
 
-            // Update node credentials
+            const credentials = {
+                userId: data.user_id,
+                refreshToken: data.refresh_token,
+                expiresAt: String(data.expires_at || 0),
+            };
+
+            // Persist credentials using Node-RED's credential system
+            RED.nodes.addCredentials(nodeId, credentials);
+            RED.log.info(`[airplus] Credentials saved for node ${nodeId}, user ${data.user_id}`);
+
+            // Also update runtime node if it exists
             const node = RED.nodes.getNode(nodeId);
             if (node) {
-                node.credentials.userId = data.user_id;
-                node.credentials.refreshToken = data.refresh_token;
-                node.credentials.expiresAt = String(data.expires_at || 0);
+                node.credentials = credentials;
+                RED.log.debug(`[airplus] Updated runtime credentials for node ${nodeId}`);
+            } else {
+                RED.log.debug(`[airplus] Node ${nodeId} not instantiated yet (config node during edit)`);
             }
 
             res.json({
@@ -454,6 +493,8 @@ module.exports = function (RED) {
                 expiresAt: data.expires_at,
             });
         } catch (err) {
+            RED.log.error(`[airplus] Error loading credentials: ${err.message}`);
+            RED.log.error(err.stack);
             res.status(500).json({ error: err.message });
         }
     });
