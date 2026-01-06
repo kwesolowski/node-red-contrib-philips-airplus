@@ -3,6 +3,9 @@
  * Handles OAuth authentication, token management, and MQTT connection.
  */
 
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const {
     generatePkce,
     generateState,
@@ -17,6 +20,9 @@ const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
 const { parseShadow, mergeStatus } = require('../lib/parser');
 const { TOKEN_REFRESH_BUFFER_MS } = require('../lib/constants');
+
+// CLI credentials file location
+const CREDENTIALS_FILE = path.join(os.homedir(), '.philips-airplus', 'credentials.json');
 
 module.exports = function (RED) {
     // PKCE state storage (in-memory, short TTL)
@@ -395,5 +401,60 @@ module.exports = function (RED) {
 
         const devices = node.getDevices();
         res.json(devices.map((d) => ({ id: d.id, name: d.name, model: d.model })));
+    });
+
+    // Check if CLI credentials file exists
+    RED.httpAdmin.get('/philips-airplus/cli-credentials', function (req, res) {
+        try {
+            if (fs.existsSync(CREDENTIALS_FILE)) {
+                const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+                res.json({
+                    exists: true,
+                    userId: data.user_id,
+                    expiresAt: data.expires_at,
+                    savedAt: data.saved_at,
+                });
+            } else {
+                res.json({ exists: false });
+            }
+        } catch (err) {
+            res.json({ exists: false, error: err.message });
+        }
+    });
+
+    // Load credentials from CLI file into node
+    RED.httpAdmin.post('/philips-airplus/load-cli-credentials', function (req, res) {
+        const nodeId = req.body.node;
+        if (!nodeId) {
+            return res.status(400).json({ error: 'Missing node ID' });
+        }
+
+        try {
+            if (!fs.existsSync(CREDENTIALS_FILE)) {
+                return res.status(404).json({ error: 'Credentials file not found. Run: npx philips-airplus-auth' });
+            }
+
+            const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+
+            if (!data.user_id || !data.refresh_token) {
+                return res.status(400).json({ error: 'Invalid credentials file' });
+            }
+
+            // Update node credentials
+            const node = RED.nodes.getNode(nodeId);
+            if (node) {
+                node.credentials.userId = data.user_id;
+                node.credentials.refreshToken = data.refresh_token;
+                node.credentials.expiresAt = String(data.expires_at || 0);
+            }
+
+            res.json({
+                success: true,
+                userId: data.user_id,
+                expiresAt: data.expires_at,
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 };

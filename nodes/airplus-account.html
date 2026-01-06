@@ -5,7 +5,7 @@
             name: { value: '' }
         },
         credentials: {
-            accessToken: { type: 'password' },
+            userId: { type: 'text' },
             refreshToken: { type: 'password' },
             expiresAt: { type: 'text' }
         },
@@ -15,34 +15,99 @@
         oneditprepare: function() {
             var node = this;
 
-            // Check auth status
             function updateAuthStatus() {
-                var hasToken = node.credentials && node.credentials.hasOwnProperty('accessToken');
+                var hasCredentials = node.credentials && node.credentials.hasOwnProperty('refreshToken');
                 var expiresAt = node.credentials ? node.credentials.expiresAt : null;
 
-                if (hasToken && expiresAt) {
-                    var expDate = new Date(parseInt(expiresAt, 10));
+                if (hasCredentials && expiresAt) {
+                    var expDate = new Date(parseInt(expiresAt, 10) * 1000);
                     var now = new Date();
                     if (expDate > now) {
-                        $('#auth-status').text('Authenticated until ' + expDate.toLocaleString())
+                        $('#auth-status').text('Authenticated (User: ' + (node.credentials.userId || 'unknown') + ')')
                             .removeClass('auth-error').addClass('auth-success');
-                        $('#auth-section-new').hide();
+                        $('#auth-section-setup').hide();
                         $('#auth-section-authenticated').show();
                     } else {
                         $('#auth-status').text('Token expired')
                             .removeClass('auth-success').addClass('auth-error');
-                        $('#auth-section-new').show();
-                        $('#auth-section-authenticated').hide();
+                        showSetupSection();
                     }
                 } else {
                     $('#auth-status').text('Not authenticated')
                         .removeClass('auth-success').addClass('auth-error');
-                    $('#auth-section-new').show();
-                    $('#auth-section-authenticated').hide();
+                    showSetupSection();
                 }
             }
 
-            // Get authorization URL
+            function showSetupSection() {
+                $('#auth-section-authenticated').hide();
+                $('#auth-section-setup').show();
+                checkCliCredentials();
+            }
+
+            function checkCliCredentials() {
+                $.ajax({
+                    url: 'philips-airplus/cli-credentials',
+                    type: 'GET',
+                    success: function(data) {
+                        if (data.exists) {
+                            $('#cli-status').html(
+                                '<span class="auth-success">CLI credentials found</span><br>' +
+                                '<small>User: ' + data.userId + '</small>'
+                            );
+                            $('#load-cli-btn').show();
+                            $('#cli-instructions').hide();
+                        } else {
+                            $('#cli-status').html('<span class="auth-error">No CLI credentials</span>');
+                            $('#load-cli-btn').hide();
+                            $('#cli-instructions').show();
+                        }
+                    },
+                    error: function() {
+                        $('#cli-status').html('<span class="auth-error">Could not check CLI status</span>');
+                        $('#cli-instructions').show();
+                    }
+                });
+            }
+
+            // Load credentials from CLI file
+            $('#load-cli-btn').on('click', function() {
+                $(this).prop('disabled', true).text('Loading...');
+
+                $.ajax({
+                    url: 'philips-airplus/load-cli-credentials',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ node: node.id }),
+                    success: function(data) {
+                        if (data.success) {
+                            RED.notify('Credentials loaded from CLI', 'success');
+                            node.credentials = node.credentials || {};
+                            node.credentials.userId = data.userId;
+                            node.credentials.expiresAt = String(data.expiresAt);
+                            updateAuthStatus();
+                        }
+                        $('#load-cli-btn').prop('disabled', false).text('Load from CLI');
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Failed to load: ' + error, 'error');
+                        $('#load-cli-btn').prop('disabled', false).text('Load from CLI');
+                    }
+                });
+            });
+
+            // Refresh CLI status
+            $('#refresh-cli-btn').on('click', function() {
+                checkCliCredentials();
+            });
+
+            // Toggle manual auth section
+            $('#show-manual-auth').on('click', function() {
+                $('#manual-auth-section').toggle();
+            });
+
+            // Manual OAuth flow (fallback)
             $('#auth-get-url').on('click', function() {
                 $(this).prop('disabled', true).text('Getting URL...');
 
@@ -65,7 +130,6 @@
                 });
             });
 
-            // Copy URL to clipboard
             $('#auth-url-copy').on('click', function() {
                 var url = $('#auth-url-display').val();
                 navigator.clipboard.writeText(url).then(function() {
@@ -73,7 +137,6 @@
                 });
             });
 
-            // Exchange code for tokens
             $('#auth-exchange').on('click', function() {
                 var redirectUrl = $('#auth-redirect-input').val().trim();
                 if (!redirectUrl) {
@@ -94,15 +157,15 @@
                     success: function(data) {
                         if (data.success) {
                             RED.notify('Authentication successful!', 'success');
-                            // Update credentials in local node object
                             node.credentials = node.credentials || {};
+                            node.credentials.userId = data.userId;
                             node.credentials.expiresAt = String(data.expiresAt);
                             updateAuthStatus();
-                            // Hide auth flow
                             $('#auth-url-display').hide();
                             $('#auth-url-copy').hide();
                             $('#auth-step2').hide();
                             $('#auth-redirect-input').val('');
+                            $('#manual-auth-section').hide();
                         } else {
                             RED.notify('Authentication failed: ' + (data.error || 'Unknown'), 'error');
                         }
@@ -118,8 +181,7 @@
 
             // Re-authenticate button
             $('#auth-reauth').on('click', function() {
-                $('#auth-section-new').show();
-                $('#auth-section-authenticated').hide();
+                showSetupSection();
             });
 
             updateAuthStatus();
@@ -142,37 +204,69 @@
         <button type="button" id="auth-reauth" class="red-ui-button">Re-authenticate</button>
     </div>
 
-    <div id="auth-section-new" style="margin-left: 100px;">
-        <div class="form-row" style="margin-bottom: 10px;">
-            <button type="button" id="auth-get-url" class="red-ui-button">1. Get Auth URL</button>
-        </div>
-
-        <div class="form-row" style="margin-bottom: 10px;">
-            <input type="text" id="auth-url-display" readonly style="width: 100%; display: none;"
-                   placeholder="Authorization URL will appear here">
-            <button type="button" id="auth-url-copy" class="red-ui-button" style="display: none; margin-top: 5px;">
-                Copy URL
+    <div id="auth-section-setup" style="margin-left: 100px;">
+        <!-- CLI-based auth (recommended) -->
+        <div class="form-row" style="margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+            <strong>CLI Authentication (Recommended)</strong>
+            <div id="cli-status" style="margin: 10px 0;"></div>
+            <button type="button" id="load-cli-btn" class="red-ui-button" style="display: none;">
+                Load from CLI
             </button>
+            <button type="button" id="refresh-cli-btn" class="red-ui-button red-ui-button-small" style="margin-left: 5px;">
+                <i class="fa fa-refresh"></i> Refresh
+            </button>
+            <div id="cli-instructions" style="margin-top: 10px; display: none;">
+                <p style="font-size: 12px; margin: 5px 0;">
+                    Run this command on the Node-RED server:
+                </p>
+                <code style="display: block; padding: 8px; background: #333; color: #0f0; border-radius: 3px; font-size: 11px;">
+                    cd ~/.node-red/node_modules/node-red-contrib-philips-airplus && npm run auth
+                </code>
+                <p style="font-size: 11px; color: #666; margin-top: 5px;">
+                    This opens a browser to log in. Credentials are saved automatically.
+                </p>
+            </div>
         </div>
 
-        <div id="auth-step2" style="display: none;">
-            <div class="form-row">
-                <p style="font-size: 12px; color: #666;">
-                    2. Open the URL in your browser, log in to your Philips account,
-                    then copy the redirect URL (starts with <code>com.philips.air://</code>)
-                    and paste it below:
-                </p>
+        <!-- Manual auth (fallback) -->
+        <div class="form-row">
+            <a href="#" id="show-manual-auth" style="font-size: 12px; color: #666;">
+                Manual authentication (advanced)
+            </a>
+        </div>
+
+        <div id="manual-auth-section" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <div class="form-row" style="margin-bottom: 10px;">
+                <button type="button" id="auth-get-url" class="red-ui-button">1. Get Auth URL</button>
             </div>
 
             <div class="form-row" style="margin-bottom: 10px;">
-                <input type="text" id="auth-redirect-input" style="width: 100%;"
-                       placeholder="Paste redirect URL here (com.philips.air://loginredirect?code=...)">
+                <input type="text" id="auth-url-display" readonly style="width: 100%; display: none;"
+                       placeholder="Authorization URL will appear here">
+                <button type="button" id="auth-url-copy" class="red-ui-button" style="display: none; margin-top: 5px;">
+                    Copy URL
+                </button>
             </div>
 
-            <div class="form-row">
-                <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-small">
-                    3. Exchange Code
-                </button>
+            <div id="auth-step2" style="display: none;">
+                <div class="form-row">
+                    <p style="font-size: 12px; color: #666;">
+                        2. Open the URL in your browser, log in to your Philips account,
+                        then copy the redirect URL (starts with <code>com.philips.air://</code>)
+                        and paste it below:
+                    </p>
+                </div>
+
+                <div class="form-row" style="margin-bottom: 10px;">
+                    <input type="text" id="auth-redirect-input" style="width: 100%;"
+                           placeholder="Paste redirect URL here (com.philips.air://loginredirect?code=...)">
+                </div>
+
+                <div class="form-row">
+                    <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-small">
+                        3. Exchange Code
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -187,7 +281,16 @@
     <p>Configuration node for Philips Air+ cloud account.</p>
 
     <h3>Authentication</h3>
-    <p>This node uses OAuth to authenticate with the Philips cloud:</p>
+    <p>Two authentication methods are available:</p>
+
+    <h4>CLI Authentication (Recommended)</h4>
+    <p>Run this command on the Node-RED server:</p>
+    <pre>cd ~/.node-red/node_modules/node-red-contrib-philips-airplus && npm run auth</pre>
+    <p>This opens a browser window for login. After successful authentication,
+    click "Load from CLI" in the node configuration to import the credentials.</p>
+
+    <h4>Manual Authentication</h4>
+    <p>If CLI is not available (e.g., headless server), use manual OAuth:</p>
     <ol>
         <li>Click "Get Auth URL" to generate an authorization URL</li>
         <li>Open the URL in your browser and log in to your Philips account</li>
