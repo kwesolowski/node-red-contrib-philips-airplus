@@ -1,169 +1,118 @@
+/**
+ * Tests for AWS IoT Shadow parser module.
+ */
+
 const {
-    parseMessage,
-    parseStatusProperties,
-    parseFilterProperties,
-    parseConfigProperties,
+    parseShadow,
+    parseReportedState,
+    buildDesiredState,
     mergeStatus,
 } = require('../lib/parser');
 
 describe('parser', () => {
-    describe('parseMessage', () => {
-        it('parses status message with portName', () => {
-            const msg = {
-                cn: 'getPort',
-                data: {
-                    portName: 'Status',
-                    properties: {
-                        pwr: '1',
+    describe('parseShadow', () => {
+        it('parses complete shadow document', () => {
+            const shadow = {
+                state: {
+                    reported: {
+                        powerOn: true,
                         mode: 'A',
-                        om: '8',
-                    },
-                },
-            };
-
-            const result = parseMessage(msg);
-
-            expect(result.type).toBe('status');
-            expect(result.data.power).toBe(true);
-            expect(result.data.mode).toBe('auto');
-            expect(result.data.fanSpeed).toBe(8);
-        });
-
-        it('parses filter message', () => {
-            const msg = {
-                data: {
-                    portName: 'filtRd',
-                    properties: {
-                        fltsts0: '200',
-                        fltt0: '360',
-                        fltsts1: '2400',
-                        fltt1: '4800',
-                    },
-                },
-            };
-
-            const result = parseMessage(msg);
-
-            expect(result.type).toBe('filter');
-            expect(result.data.cleanRemaining).toBe(200);
-            expect(result.data.replaceRemaining).toBe(2400);
-        });
-
-        it('parses config message', () => {
-            const msg = {
-                data: {
-                    portName: 'Config',
-                    properties: {
-                        ctn: 'AC3737/10',
-                        swversion: '1.2.3',
-                    },
-                },
-            };
-
-            const result = parseMessage(msg);
-
-            expect(result.type).toBe('config');
-            expect(result.data.model).toBe('AC3737/10');
-            expect(result.data.firmwareVersion).toBe('1.2.3');
-        });
-
-        it('handles message without portName but with properties', () => {
-            const msg = {
-                data: {
-                    properties: {
-                        pwr: '1',
                         pm25: '15',
                     },
+                    desired: {
+                        powerOn: true,
+                    },
+                },
+                timestamp: 1767673935,
+                version: 123,
+            };
+
+            const result = parseShadow(shadow);
+
+            expect(result.reported.power).toBe(true);
+            expect(result.reported.mode).toBe('auto');
+            expect(result.reported.pm25).toBe(15);
+            expect(result.desired.powerOn).toBe(true);
+            expect(result.timestamp).toBe(1767673935);
+            expect(result.version).toBe(123);
+        });
+
+        it('handles shadow without desired state', () => {
+            const shadow = {
+                state: {
+                    reported: { powerOn: false },
                 },
             };
 
-            const result = parseMessage(msg);
+            const result = parseShadow(shadow);
 
-            expect(result.type).toBe('status');
-            expect(result.data.power).toBe(true);
-            expect(result.data.pm25).toBe(15);
-        });
-
-        it('handles top-level properties', () => {
-            const msg = {
-                properties: {
-                    pwr: '1',
-                },
-            };
-
-            const result = parseMessage(msg);
-
-            expect(result.type).toBe('status');
-            expect(result.data.power).toBe(true);
-        });
-
-        it('handles getAllPorts list response', () => {
-            const msg = {
-                data: [
-                    { portName: 'Status' },
-                    { portName: 'Config' },
-                    { portName: 'filtRd' },
-                ],
-            };
-
-            const result = parseMessage(msg);
-
-            expect(result.type).toBe('ports');
-            expect(result.data).toEqual(['Status', 'Config', 'filtRd']);
+            expect(result.reported.power).toBe(false);
+            expect(result.desired).toEqual({});
         });
 
         it('returns null for invalid input', () => {
-            expect(parseMessage(null)).toBeNull();
-            expect(parseMessage({})).toBeNull();
-            expect(parseMessage({ data: null })).toBeNull();
+            expect(parseShadow(null)).toBeNull();
+            expect(parseShadow({})).toEqual({
+                reported: {},
+                desired: {},
+                timestamp: undefined,
+                version: undefined,
+            });
         });
     });
 
-    describe('parseStatusProperties', () => {
+    describe('parseReportedState', () => {
         it('parses power state', () => {
-            expect(parseStatusProperties({ pwr: '1' }).power).toBe(true);
-            expect(parseStatusProperties({ pwr: '0' }).power).toBe(false);
-            expect(parseStatusProperties({ pwr: 1 }).power).toBe(true);
-            expect(parseStatusProperties({ pwr: true }).power).toBe(true);
+            expect(parseReportedState({ powerOn: true }).power).toBe(true);
+            expect(parseReportedState({ powerOn: false }).power).toBe(false);
+            expect(parseReportedState({ pwr: '1' }).power).toBe(true);
+            expect(parseReportedState({ pwr: '0' }).power).toBe(false);
         });
 
-        it('parses alternative power property', () => {
-            expect(parseStatusProperties({ 'D03-02': '1' }).power).toBe(true);
-            expect(parseStatusProperties({ 'D03-02': 1 }).power).toBe(true);
+        it('parses connected state', () => {
+            expect(parseReportedState({ connected: true }).connected).toBe(true);
+            expect(parseReportedState({ connected: false }).connected).toBe(false);
+        });
+
+        it('parses product state', () => {
+            const result = parseReportedState({ productState: 'running' });
+            expect(result.productState).toBe('running');
         });
 
         it('parses mode', () => {
-            expect(parseStatusProperties({ mode: 'A' }).mode).toBe('auto');
-            expect(parseStatusProperties({ mode: 'S' }).mode).toBe('sleep');
-            expect(parseStatusProperties({ mode: 'T' }).mode).toBe('turbo');
-            expect(parseStatusProperties({ mode: 'M' }).mode).toBe('manual');
+            expect(parseReportedState({ mode: 'A' }).mode).toBe('auto');
+            expect(parseReportedState({ mode: 'S' }).mode).toBe('sleep');
+            expect(parseReportedState({ mode: 'T' }).mode).toBe('turbo');
+            expect(parseReportedState({ mode: 'M' }).mode).toBe('manual');
         });
 
         it('preserves raw mode value', () => {
-            const result = parseStatusProperties({ mode: 'A' });
+            const result = parseReportedState({ mode: 'A' });
             expect(result.modeRaw).toBe('A');
         });
 
         it('parses fan speed', () => {
-            expect(parseStatusProperties({ om: '12' }).fanSpeed).toBe(12);
-            expect(parseStatusProperties({ om: 8 }).fanSpeed).toBe(8);
+            expect(parseReportedState({ om: '12' }).fanSpeed).toBe(12);
+            expect(parseReportedState({ fanSpeed: 8 }).fanSpeed).toBe(8);
         });
 
         it('parses PM2.5', () => {
-            expect(parseStatusProperties({ pm25: '15' }).pm25).toBe(15);
-            expect(parseStatusProperties({ 'D03-32': 20 }).pm25).toBe(20);
+            expect(parseReportedState({ pm25: '15' }).pm25).toBe(15);
+            expect(parseReportedState({ pm25: 20 }).pm25).toBe(20);
         });
 
         it('parses humidity', () => {
-            expect(parseStatusProperties({ rh: '45' }).humidity).toBe(45);
+            expect(parseReportedState({ rh: '45' }).humidity).toBe(45);
+            expect(parseReportedState({ humidity: 50 }).humidity).toBe(50);
         });
 
         it('parses temperature', () => {
-            expect(parseStatusProperties({ temp: '22' }).temperature).toBe(22);
+            expect(parseReportedState({ temp: '22' }).temperature).toBe(22);
+            expect(parseReportedState({ temperature: 25 }).temperature).toBe(25);
         });
 
         it('parses humidifier properties', () => {
-            const result = parseStatusProperties({
+            const result = parseReportedState({
                 rhset: '50',
                 wl: '80',
             });
@@ -172,97 +121,119 @@ describe('parser', () => {
         });
 
         it('parses air quality index', () => {
-            expect(parseStatusProperties({ iaql: '3' }).airQualityIndex).toBe(3);
+            expect(parseReportedState({ iaql: '3' }).airQualityIndex).toBe(3);
+            expect(parseReportedState({ airQualityIndex: 5 }).airQualityIndex).toBe(5);
         });
 
         it('parses child lock', () => {
-            expect(parseStatusProperties({ cl: '1' }).childLock).toBe(true);
-            expect(parseStatusProperties({ cl: '0' }).childLock).toBe(false);
+            expect(parseReportedState({ cl: '1' }).childLock).toBe(true);
+            expect(parseReportedState({ cl: '0' }).childLock).toBe(false);
+            expect(parseReportedState({ childLock: true }).childLock).toBe(true);
         });
 
         it('parses display light', () => {
-            expect(parseStatusProperties({ uil: '100' }).displayLight).toBe(100);
+            expect(parseReportedState({ uil: '100' }).displayLight).toBe(100);
+            expect(parseReportedState({ displayLight: 50 }).displayLight).toBe(50);
+        });
+
+        it('parses firmware versions', () => {
+            const result = parseReportedState({
+                ncpFirmwareVersion: '1.0.0',
+                hostFirmwareVersion: '1.0.4',
+            });
+            expect(result.ncpFirmwareVersion).toBe('1.0.0');
+            expect(result.hostFirmwareVersion).toBe('1.0.4');
+        });
+
+        it('parses timezone', () => {
+            const result = parseReportedState({
+                timezones: {
+                    iana: 'Europe/Warsaw',
+                    posix: 'CET-1CEST,M3.5.0,M10.5.0/3',
+                },
+            });
+            expect(result.timezone).toBe('Europe/Warsaw');
+        });
+
+        it('parses filter status', () => {
+            const result = parseReportedState({
+                fltsts0: '200',
+                fltt0: '360',
+                fltsts1: '2400',
+                fltt1: '4800',
+            });
+
+            expect(result.filter.cleanRemaining).toBe(200);
+            expect(result.filter.cleanNominal).toBe(360);
+            expect(result.filter.replaceRemaining).toBe(2400);
+            expect(result.filter.replaceNominal).toBe(4800);
+            expect(result.filter.cleanPercent).toBe(56);
+            expect(result.filter.replacePercent).toBe(50);
         });
 
         it('preserves raw properties', () => {
-            const props = { pwr: '1', unknown: 'value' };
-            const result = parseStatusProperties(props);
+            const props = { powerOn: true, unknown: 'value' };
+            const result = parseReportedState(props);
             expect(result.raw).toBe(props);
         });
     });
 
-    describe('parseFilterProperties', () => {
-        it('parses filter cleaning status', () => {
-            const result = parseFilterProperties({
-                fltsts0: '200',
-                fltt0: '360',
+    describe('buildDesiredState', () => {
+        it('builds power state', () => {
+            expect(buildDesiredState({ power: true })).toEqual({ powerOn: true });
+            expect(buildDesiredState({ power: false })).toEqual({ powerOn: false });
+        });
+
+        it('builds mode state', () => {
+            expect(buildDesiredState({ mode: 'auto' })).toEqual({ mode: 'A' });
+            expect(buildDesiredState({ mode: 'sleep' })).toEqual({ mode: 'S' });
+            expect(buildDesiredState({ mode: 'turbo' })).toEqual({ mode: 'T' });
+            expect(buildDesiredState({ mode: 'manual' })).toEqual({ mode: 'M' });
+        });
+
+        it('passes through raw mode codes', () => {
+            expect(buildDesiredState({ mode: 'A' })).toEqual({ mode: 'A' });
+        });
+
+        it('builds fan speed state', () => {
+            expect(buildDesiredState({ fanSpeed: 12 })).toEqual({ om: '12' });
+        });
+
+        it('builds target humidity state', () => {
+            expect(buildDesiredState({ targetHumidity: 50 })).toEqual({ rhset: '50' });
+        });
+
+        it('builds child lock state', () => {
+            expect(buildDesiredState({ childLock: true })).toEqual({ cl: '1' });
+            expect(buildDesiredState({ childLock: false })).toEqual({ cl: '0' });
+        });
+
+        it('builds display light state', () => {
+            expect(buildDesiredState({ displayLight: 2 })).toEqual({ uil: '2' });
+        });
+
+        it('builds combined state', () => {
+            const result = buildDesiredState({
+                power: true,
+                mode: 'auto',
+                fanSpeed: 8,
             });
 
-            expect(result.cleanRemaining).toBe(200);
-            expect(result.cleanNominal).toBe(360);
+            expect(result).toEqual({
+                powerOn: true,
+                mode: 'A',
+                om: '8',
+            });
         });
 
-        it('parses filter replacement status', () => {
-            const result = parseFilterProperties({
-                fltsts1: '2400',
-                fltt1: '4800',
+        it('ignores undefined values', () => {
+            const result = buildDesiredState({
+                power: true,
+                mode: undefined,
             });
 
-            expect(result.replaceRemaining).toBe(2400);
-            expect(result.replaceNominal).toBe(4800);
-        });
-
-        it('calculates percentages', () => {
-            const result = parseFilterProperties({
-                fltsts0: '180',
-                fltt0: '360',
-                fltsts1: '2400',
-                fltt1: '4800',
-            });
-
-            expect(result.cleanPercent).toBe(50);
-            expect(result.replacePercent).toBe(50);
-        });
-
-        it('sets alert flags when low', () => {
-            const result = parseFilterProperties({
-                fltsts0: '10',
-                fltt0: '360',
-                fltsts1: '100',
-                fltt1: '4800',
-            });
-
-            expect(result.needsCleaning).toBe(true);
-            expect(result.needsReplacement).toBe(true);
-        });
-
-        it('clears alert flags when healthy', () => {
-            const result = parseFilterProperties({
-                fltsts0: '300',
-                fltt0: '360',
-                fltsts1: '4000',
-                fltt1: '4800',
-            });
-
-            expect(result.needsCleaning).toBe(false);
-            expect(result.needsReplacement).toBe(false);
-        });
-    });
-
-    describe('parseConfigProperties', () => {
-        it('parses model', () => {
-            const result = parseConfigProperties({ ctn: 'AC3737/10' });
-            expect(result.model).toBe('AC3737/10');
-        });
-
-        it('parses firmware version', () => {
-            const result = parseConfigProperties({ swversion: '2.1.0' });
-            expect(result.firmwareVersion).toBe('2.1.0');
-        });
-
-        it('parses device name', () => {
-            const result = parseConfigProperties({ name: 'Living Room' });
-            expect(result.deviceName).toBe('Living Room');
+            expect(result).toEqual({ powerOn: true });
+            expect(result).not.toHaveProperty('mode');
         });
     });
 
@@ -295,6 +266,16 @@ describe('parser', () => {
 
             expect(result.raw.pwr).toBe('1');
             expect(result.raw.pm25).toBe('15');
+        });
+
+        it('merges filter properties', () => {
+            const existing = { filter: { cleanRemaining: 200 } };
+            const update = { filter: { replaceRemaining: 2400 } };
+
+            const result = mergeStatus(existing, update);
+
+            expect(result.filter.cleanRemaining).toBe(200);
+            expect(result.filter.replaceRemaining).toBe(2400);
         });
 
         it('adds timestamp', () => {

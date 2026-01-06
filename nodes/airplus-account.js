@@ -3,10 +3,19 @@
  * Handles OAuth authentication, token management, and MQTT connection.
  */
 
-const { generatePkce, buildAuthUrl, parseRedirectUrl, exchangeCode, refreshTokens, isTokenExpired } = require('../lib/oauth');
+const {
+    generatePkce,
+    generateState,
+    buildAuthUrl,
+    parseRedirectUrl,
+    exchangeCode,
+    refreshTokens,
+    extractUserId,
+    isTokenExpired,
+} = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
-const { parseMessage, mergeStatus } = require('../lib/parser');
+const { parseShadow, mergeStatus } = require('../lib/parser');
 const { TOKEN_REFRESH_BUFFER_MS } = require('../lib/constants');
 
 module.exports = function (RED) {
@@ -36,13 +45,22 @@ module.exports = function (RED) {
         // State
         let mqttClient = null;
         let apiClient = null;
+        let tokenSet = null; // openid-client TokenSet
         let deviceCache = [];
         let deviceStatus = new Map(); // deviceId -> status
         let statusCallbacks = new Map(); // deviceId -> Set of callbacks
 
+        // Get API client singleton
+        function getApiClient() {
+            if (!apiClient) {
+                apiClient = createApiClient();
+            }
+            return apiClient;
+        }
+
         // Credentials
-        function getAccessToken() {
-            return node.credentials.accessToken || null;
+        function getUserId() {
+            return node.credentials.userId || null;
         }
 
         function getRefreshToken() {
@@ -54,7 +72,7 @@ module.exports = function (RED) {
         }
 
         function isAuthenticated() {
-            return !!getAccessToken() && !!getRefreshToken();
+            return !!getUserId() && !!getRefreshToken();
         }
 
         // Token management
@@ -64,11 +82,11 @@ module.exports = function (RED) {
             }
 
             const expiresAt = getExpiresAt();
-            if (isTokenExpired(expiresAt, TOKEN_REFRESH_BUFFER_MS)) {
+            if (expiresAt && Date.now() >= expiresAt * 1000 - TOKEN_REFRESH_BUFFER_MS) {
                 node.log('Token expired or expiring soon, refreshing...');
                 try {
-                    const tokens = await refreshTokens(getRefreshToken());
-                    updateCredentials(tokens);
+                    tokenSet = await refreshTokens(getRefreshToken());
+                    updateCredentials(tokenSet);
                     node.log('Token refreshed successfully');
                 } catch (err) {
                     node.error(`Token refresh failed: ${err.message}`);
@@ -76,37 +94,26 @@ module.exports = function (RED) {
                 }
             }
 
-            return getAccessToken();
+            return getUserId();
         }
 
-        function updateCredentials(tokens) {
-            node.credentials.accessToken = tokens.accessToken;
-            node.credentials.refreshToken = tokens.refreshToken;
-            node.credentials.expiresAt = String(tokens.expiresAt);
+        function updateCredentials(newTokenSet) {
+            const userId = extractUserId(newTokenSet);
+            node.credentials.userId = userId;
+            node.credentials.refreshToken = newTokenSet.refresh_token;
+            node.credentials.expiresAt = String(newTokenSet.expires_at || 0);
+            tokenSet = newTokenSet;
 
-            // Update API client with new token
-            if (apiClient) {
-                apiClient = createApiClient({
-                    getToken: ensureValidToken,
-                });
-            }
-        }
-
-        // API client
-        function getApiClient() {
-            if (!apiClient) {
-                apiClient = createApiClient({
-                    getToken: ensureValidToken,
-                });
-            }
-            return apiClient;
+            // Clear API token cache on credential update
+            getApiClient().clearToken();
         }
 
         // Device management
         async function fetchDevices() {
             try {
+                const userId = await ensureValidToken();
                 const client = getApiClient();
-                deviceCache = await client.listDevices();
+                deviceCache = await client.listDevices(userId);
                 node.log(`Found ${deviceCache.length} device(s)`);
                 return deviceCache;
             } catch (err) {
@@ -122,16 +129,22 @@ module.exports = function (RED) {
             }
 
             try {
-                const client = getApiClient();
-                const { signature } = await client.getSignature();
-
                 mqttClient = createMqttClient({
-                    clientId: `nodered-${node.id.slice(0, 8)}`,
-                    getCredentials: async () => ({
-                        token: await ensureValidToken(),
-                        signature,
-                    }),
-                    onMessage: handleMqttMessage,
+                    getMqttInfo: async () => {
+                        const userId = await ensureValidToken();
+                        const client = getApiClient();
+                        const deviceIds = deviceCache.map((d) => d.id);
+                        if (deviceIds.length === 0) {
+                            throw new Error('No devices to connect');
+                        }
+                        const mqttInfos = await client.getMqttInfo(userId, deviceIds);
+                        if (!mqttInfos || mqttInfos.length === 0) {
+                            throw new Error('No MQTT info returned');
+                        }
+                        // Return first device's MQTT info (all devices share same broker)
+                        return mqttInfos[0];
+                    },
+                    onStateChange: handleStateChange,
                     onConnect: () => {
                         node.log('MQTT connected');
                         updateStatus();
@@ -146,6 +159,12 @@ module.exports = function (RED) {
                 });
 
                 await mqttClient.connect();
+
+                // Subscribe to all devices
+                for (const device of deviceCache) {
+                    mqttClient.subscribeDevice(device.id);
+                }
+
                 node.log('MQTT connection established');
             } catch (err) {
                 node.error(`MQTT connection failed: ${err.message}`);
@@ -153,22 +172,30 @@ module.exports = function (RED) {
             }
         }
 
-        function handleMqttMessage(deviceId, rawData) {
-            const parsed = parseMessage(rawData);
+        function handleStateChange(deviceId, state, type) {
+            // Parse state based on type
+            let parsed;
+            if (type === 'reported') {
+                parsed = parseShadow({ state: { reported: state } });
+            } else if (type === 'delta') {
+                // Delta contains just the changed properties
+                parsed = { reported: state, delta: true };
+            } else {
+                parsed = parseShadow(state);
+            }
+
             if (!parsed) return;
 
-            if (parsed.type === 'status' || parsed.type === 'filter' || parsed.type === 'config') {
-                // Merge into device status
-                const existing = deviceStatus.get(deviceId) || {};
-                const updated = mergeStatus(existing, parsed.data);
-                deviceStatus.set(deviceId, updated);
+            // Merge into device status
+            const existing = deviceStatus.get(deviceId) || {};
+            const updated = mergeStatus(existing, parsed.reported || parsed);
+            deviceStatus.set(deviceId, updated);
 
-                // Notify subscribers
-                const callbacks = statusCallbacks.get(deviceId);
-                if (callbacks) {
-                    for (const callback of callbacks) {
-                        callback(updated, parsed.type);
-                    }
+            // Notify subscribers
+            const callbacks = statusCallbacks.get(deviceId);
+            if (callbacks) {
+                for (const callback of callbacks) {
+                    callback(updated, type);
                 }
             }
         }
@@ -177,7 +204,7 @@ module.exports = function (RED) {
             if (!isAuthenticated()) {
                 node.status({ fill: 'grey', shape: 'ring', text: 'not authenticated' });
             } else if (mqttClient && mqttClient.isConnected()) {
-                const count = mqttClient.getSubscriptionCount();
+                const count = mqttClient.getSubscribedDevices().length;
                 node.status({ fill: 'green', shape: 'dot', text: `connected (${count} devices)` });
             } else {
                 node.status({ fill: 'yellow', shape: 'ring', text: 'disconnected' });
@@ -194,7 +221,7 @@ module.exports = function (RED) {
 
             // Subscribe to MQTT if connected
             if (mqttClient && mqttClient.isConnected()) {
-                mqttClient.subscribe(deviceId, () => {});
+                mqttClient.subscribeDevice(deviceId);
             }
 
             updateStatus();
@@ -210,7 +237,7 @@ module.exports = function (RED) {
                 if (callbacks.size === 0) {
                     statusCallbacks.delete(deviceId);
                     if (mqttClient) {
-                        mqttClient.unsubscribe(deviceId);
+                        mqttClient.unsubscribeDevice(deviceId);
                     }
                 }
             }
@@ -229,6 +256,20 @@ module.exports = function (RED) {
             return mqttClient && mqttClient.isConnected();
         };
 
+        node.getDeviceState = async function (deviceId) {
+            if (!mqttClient || !mqttClient.isConnected()) {
+                throw new Error('Not connected');
+            }
+            return mqttClient.getDeviceState(deviceId);
+        };
+
+        node.updateDeviceState = async function (deviceId, desiredState) {
+            if (!mqttClient || !mqttClient.isConnected()) {
+                throw new Error('Not connected');
+            }
+            return mqttClient.updateDeviceState(deviceId, desiredState);
+        };
+
         // Initialize on startup
         async function initialize() {
             if (!isAuthenticated()) {
@@ -238,7 +279,9 @@ module.exports = function (RED) {
 
             try {
                 await fetchDevices();
-                await connectMqtt();
+                if (deviceCache.length > 0) {
+                    await connectMqtt();
+                }
                 updateStatus();
             } catch (err) {
                 node.error(`Initialization failed: ${err.message}`);
@@ -264,62 +307,75 @@ module.exports = function (RED) {
 
     RED.nodes.registerType('airplus-account', AirplusAccountNode, {
         credentials: {
-            accessToken: { type: 'password' },
+            userId: { type: 'text' },
             refreshToken: { type: 'password' },
             expiresAt: { type: 'text' },
         },
     });
 
     // Admin endpoints for OAuth flow
-    RED.httpAdmin.post('/philips-airplus/auth/start', function (req, res) {
+    RED.httpAdmin.post('/philips-airplus/auth/start', async function (req, res) {
         const nodeId = req.body.node;
         if (!nodeId) {
             return res.status(400).json({ error: 'Missing node ID' });
         }
 
-        const { verifier, challenge } = generatePkce();
-        const state = nodeId;
-        const url = buildAuthUrl(challenge, state);
+        try {
+            const { verifier, challenge } = generatePkce();
+            const state = generateState();
+            const url = await buildAuthUrl({ codeChallenge: challenge, state });
 
-        // Store PKCE verifier
-        pkceStore.set(state, {
-            verifier,
-            expires: Date.now() + PKCE_TTL_MS,
-        });
+            // Store PKCE verifier with state as key
+            pkceStore.set(state, {
+                verifier,
+                nodeId,
+                expires: Date.now() + PKCE_TTL_MS,
+            });
 
-        res.json({ url, state });
+            res.json({ url, state });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 
     RED.httpAdmin.post('/philips-airplus/auth/complete', async function (req, res) {
-        const { node: nodeId, redirect_url } = req.body;
+        const { redirect_url } = req.body;
 
-        if (!nodeId || !redirect_url) {
-            return res.status(400).json({ error: 'Missing node ID or redirect URL' });
-        }
-
-        const stored = pkceStore.get(nodeId);
-        if (!stored) {
-            return res.status(400).json({ error: 'Auth session expired or not found' });
+        if (!redirect_url) {
+            return res.status(400).json({ error: 'Missing redirect URL' });
         }
 
         try {
-            const { code } = parseRedirectUrl(redirect_url);
-            const tokens = await exchangeCode(code, stored.verifier);
+            const { code, state } = parseRedirectUrl(redirect_url);
+
+            const stored = pkceStore.get(state);
+            if (!stored) {
+                return res.status(400).json({ error: 'Auth session expired or not found' });
+            }
+
+            const tokenSet = await exchangeCode({
+                code,
+                codeVerifier: stored.verifier,
+            });
 
             // Clean up PKCE storage
-            pkceStore.delete(nodeId);
+            pkceStore.delete(state);
+
+            // Extract user ID
+            const userId = extractUserId(tokenSet);
 
             // Update node credentials
-            const node = RED.nodes.getNode(nodeId);
+            const node = RED.nodes.getNode(stored.nodeId);
             if (node) {
-                node.credentials.accessToken = tokens.accessToken;
-                node.credentials.refreshToken = tokens.refreshToken;
-                node.credentials.expiresAt = String(tokens.expiresAt);
+                node.credentials.userId = userId;
+                node.credentials.refreshToken = tokenSet.refresh_token;
+                node.credentials.expiresAt = String(tokenSet.expires_at || 0);
             }
 
             res.json({
                 success: true,
-                expiresAt: tokens.expiresAt,
+                userId,
+                expiresAt: tokenSet.expires_at,
             });
         } catch (err) {
             res.status(400).json({ error: err.message });
