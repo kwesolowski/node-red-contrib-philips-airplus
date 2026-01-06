@@ -107,10 +107,19 @@ module.exports = function (RED) {
 
         function updateCredentials(newTokenSet) {
             const userId = extractUserId(newTokenSet);
-            node.credentials.userId = userId;
-            node.credentials.refreshToken = newTokenSet.refresh_token;
-            node.credentials.expiresAt = String(newTokenSet.expires_at || 0);
+            const credentials = {
+                userId: userId,
+                refreshToken: newTokenSet.refresh_token,
+                expiresAt: String(newTokenSet.expires_at || 0),
+            };
+
+            // Update in-memory credentials
+            node.credentials = credentials;
             tokenSet = newTokenSet;
+
+            // Persist to Node-RED credential storage (survives restart)
+            RED.nodes.addCredentials(node.id, credentials);
+            node.log('Credentials persisted after token refresh');
 
             // Clear API token cache on credential update
             getApiClient().clearToken();
@@ -238,12 +247,17 @@ module.exports = function (RED) {
                 mqttClient.subscribeDevice(deviceId);
 
                 // Request initial state if this is the authorized device
+                // Delay to allow subscriptions to complete (SUBACK is async)
                 const authorizedDevice = mqttClient.getAuthorizedDevice();
                 if (deviceId === authorizedDevice && !deviceStatus.has(deviceId)) {
-                    node.log(`Requesting initial state for ${deviceId}`);
-                    mqttClient.getDeviceState(deviceId).catch((err) => {
-                        node.warn(`Failed to get initial state: ${err.message}`);
-                    });
+                    setTimeout(() => {
+                        if (mqttClient && mqttClient.isConnected() && !deviceStatus.has(deviceId)) {
+                            node.log(`Requesting initial state for ${deviceId}`);
+                            mqttClient.getDeviceState(deviceId).catch((err) => {
+                                node.warn(`Failed to get initial state: ${err.message}`);
+                            });
+                        }
+                    }, 1000);
                 }
             }
 
