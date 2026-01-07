@@ -42,7 +42,7 @@ From `g7/d.java:E0()`:
 | `17`  | Sleep  | ModeSleepShort | Sleep mode           |
 | `18`  | Turbo  | PA_Turbo       | Turbo mode           |
 
-**Note:** Parser allows fan speeds 1-16 for manual mode, though app UI only shows 2 speeds.
+**Note:** AC3737 hardware only supports 2 manual speeds. Protocol allows 1-16, but device ignores values >2.
 
 ### Sensor Fields (Read)
 

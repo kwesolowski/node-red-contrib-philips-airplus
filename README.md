@@ -70,7 +70,7 @@ Sends control commands to a device.
 msg.payload = {
     power: true,           // on/off (optional)
     mode: 'auto',          // auto, sleep, turbo, manual (optional)
-    fanSpeed: 8,           // 1-16 manual speed (optional)
+    fanSpeed: 1,           // 1-2 manual speed (optional, AC3737 has 2 speeds)
     targetHumidity: 50,    // 40-70, humidifiers only (optional)
     childLock: false,      // boolean (optional)
     displayLight: 50       // 0-100: 0=off, 50=dim, 100=bright (optional)
