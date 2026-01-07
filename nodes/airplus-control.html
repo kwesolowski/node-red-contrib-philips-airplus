@@ -97,16 +97,23 @@
 
     <h3>Inputs</h3>
     <p>Send control commands or refresh requests via input messages.</p>
+    <p><strong>Partial updates supported:</strong> Send only the properties you want to change. Omitted properties remain unchanged.</p>
 
     <h4>Control Command (Simple Format)</h4>
     <pre>msg.payload = {
-    power: true,            // boolean
-    mode: 'auto',           // 'auto', 'sleep', 'turbo', 'manual'
-    fanSpeed: 8,            // 1-18
-    targetHumidity: 50,     // 40-70 (humidifiers only)
-    childLock: false,       // boolean
-    displayLight: 1         // 0-2 (0=off, 1=dim, 2=bright)
+    power: true,            // boolean (optional)
+    mode: 'auto',           // 'auto', 'sleep', 'turbo', 'manual' (optional)
+    fanSpeed: 8,            // 1-18 (optional)
+    targetHumidity: 50,     // 40-70, humidifiers only (optional)
+    childLock: false,       // boolean (optional)
+    displayLight: 1         // 0-2: off, dim, bright (optional)
 }</pre>
+
+    <h4>Partial Update Examples</h4>
+    <pre>msg.payload = { power: true };              // Just turn on
+msg.payload = { mode: 'sleep' };            // Just change mode
+msg.payload = { power: true, mode: 'auto' }; // Turn on in auto
+msg.payload = { fanSpeed: 12 };             // Just fan speed</pre>
 
     <h4>Control Command (AWS Shadow Format)</h4>
     <pre>msg.payload = {
@@ -162,12 +169,13 @@ msg.payload = {}  // ignored</pre>
     </dl>
 
     <h3>Usage with Inject Nodes</h3>
-    <p>Create inject nodes for manual control:</p>
-    <pre>[Inject: {power: true}]      ──> Power On
+    <p>Create inject nodes for manual control. Each inject changes only the specified property:</p>
+    <pre>[Inject: {power: true}]      ──> Power On (keeps current mode)
 [Inject: {power: false}]     ──> Power Off
-[Inject: {mode: 'auto'}]     ──> Auto Mode
+[Inject: {mode: 'auto'}]     ──> Auto Mode (keeps power state)
 [Inject: {mode: 'sleep'}]    ──> Sleep Mode
 [Inject: {mode: 'turbo'}]    ──> Turbo Mode
+[Inject: {fanSpeed: 12}]     ──> Set Fan Speed
 [Inject: topic='refresh']    ──> Fetch Status</pre>
 
     <h3>Details</h3>

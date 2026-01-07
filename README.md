@@ -59,17 +59,29 @@ msg.deviceName = 'Living Room';
 
 Sends control commands to a device.
 
+**Partial updates supported:** Send only the properties you want to change. Omitted properties remain unchanged.
+
 **Input (simple format):**
 
 ```javascript
+// Change any combination of properties:
 msg.payload = {
-    power: true,           // on/off
-    mode: 'auto',          // auto, sleep, turbo, manual
-    fanSpeed: 8,           // 1-18
-    targetHumidity: 50,    // 40-70 (humidifiers only)
-    childLock: false,      // boolean
-    displayLight: 1        // 0-2 (0=off, 1=dim, 2=bright)
+    power: true,           // on/off (optional)
+    mode: 'auto',          // auto, sleep, turbo, manual (optional)
+    fanSpeed: 8,           // 1-18 (optional)
+    targetHumidity: 50,    // 40-70, humidifiers only (optional)
+    childLock: false,      // boolean (optional)
+    displayLight: 1        // 0-2: off, dim, bright (optional)
 };
+```
+
+**Partial update examples:**
+
+```javascript
+msg.payload = { power: true };              // Just turn on, keep mode
+msg.payload = { mode: 'sleep' };            // Just change mode
+msg.payload = { power: true, mode: 'auto' }; // Turn on in auto mode
+msg.payload = { fanSpeed: 12 };             // Just adjust fan speed
 ```
 
 **Refresh command:**
@@ -91,6 +103,7 @@ msg.payload = {};  // ignored
 [Inject: {power: false}]     → Power Off
 [Inject: {mode: 'auto'}]     → Auto Mode
 [Inject: {mode: 'sleep'}]    → Sleep Mode
+[Inject: {fanSpeed: 12}]     → Change Fan Speed
 [Inject: topic='refresh']    → Fetch Status
 ```
 
