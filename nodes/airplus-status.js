@@ -75,13 +75,24 @@ module.exports = function (RED) {
         }
 
         // Subscribe to device updates
-        function subscribe() {
+        async function subscribe() {
             const currentStatus = accountNode.subscribe(deviceId, onStatusUpdate);
             if (currentStatus) {
                 // Emit current status immediately
                 onStatusUpdate(currentStatus, 'initial');
             } else {
-                node.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
+                node.status({ fill: 'yellow', shape: 'ring', text: 'fetching...' });
+                // No cached status - request fresh state immediately
+                try {
+                    const shadowDoc = await accountNode.getDeviceState(deviceId);
+                    const status = shadowDoc?.state?.reported;
+                    if (status) {
+                        onStatusUpdate(status, 'initial');
+                    }
+                } catch (err) {
+                    node.warn(`Failed to fetch initial state: ${err.message}`);
+                    node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for updates...' });
+                }
             }
         }
 
