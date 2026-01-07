@@ -70,10 +70,10 @@ Sends control commands to a device.
 msg.payload = {
     power: true,           // on/off (optional)
     mode: 'auto',          // auto, sleep, turbo, manual (optional)
-    fanSpeed: 8,           // 1-18 (optional)
+    fanSpeed: 8,           // 1-16 manual speed (optional)
     targetHumidity: 50,    // 40-70, humidifiers only (optional)
     childLock: false,      // boolean (optional)
-    displayLight: 1        // 0-2: off, dim, bright (optional)
+    displayLight: 50       // 0-100: 0=off, 50=dim, 100=bright (optional)
 };
 ```
 
