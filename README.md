@@ -11,7 +11,9 @@ Node-RED nodes for Philips Air+ purifiers and humidifiers via cloud API.
 
 ## Supported Devices
 
-Tested with AC3737. Should work with other Philips Air+ app compatible devices.
+**AC3737** and other v3 protocol devices only. This package uses the v3 AWS IoT protocol with field names like `D03102` (power) and `D0310C` (mode).
+
+Older devices using v1 or v2 protocols are not supported.
 
 ## Installation
 
