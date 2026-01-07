@@ -109,21 +109,29 @@ module.exports = function (RED) {
         }
 
         // Handle manual trigger input
-        node.on('input', function (msg, send, done) {
-            // Output current status on demand
-            const status = accountNode.getDeviceStatus(deviceId);
-            if (status) {
-                send({
-                    payload: status,
-                    deviceId: deviceId,
-                    deviceName: deviceName,
-                    topic: `${deviceId}/status`,
-                    updateType: 'manual',
-                });
-            } else {
-                node.warn('No status available for device');
+        node.on('input', async function (msg, send, done) {
+            try {
+                // Request fresh state from device shadow via MQTT
+                const shadowDoc = await accountNode.getDeviceState(deviceId);
+                const status = shadowDoc?.state?.reported;
+
+                if (status) {
+                    send({
+                        payload: status,
+                        deviceId: deviceId,
+                        deviceName: deviceName,
+                        topic: `${deviceId}/status`,
+                        updateType: 'manual',
+                    });
+                    updateNodeStatus(status);
+                } else {
+                    node.warn('No reported state in shadow document');
+                }
+                if (done) done();
+            } catch (err) {
+                node.error(`Failed to get device state: ${err.message}`);
+                if (done) done(err);
             }
-            if (done) done();
         });
 
         // Cleanup on close
