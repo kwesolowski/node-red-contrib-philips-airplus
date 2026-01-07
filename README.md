@@ -55,6 +55,41 @@ msg.deviceId = 'da-xxx';
 msg.deviceName = 'Living Room';
 ```
 
+### airplus-control
+
+Sends control commands to a device.
+
+**Input (simple format):**
+```javascript
+msg.payload = {
+    power: true,           // on/off
+    mode: 'auto',          // auto, sleep, turbo, manual
+    fanSpeed: 8,           // 1-18
+    targetHumidity: 50,    // 40-70 (humidifiers only)
+    childLock: false,      // boolean
+    displayLight: 1        // 0-2 (0=off, 1=dim, 2=bright)
+};
+```
+
+**Refresh command:**
+```javascript
+msg.topic = 'refresh';
+msg.payload = {};  // ignored
+```
+
+**Outputs:**
+- Port 1: Success with `msg.controlResult`
+- Port 2: Error with `msg.error`
+
+**Usage with inject nodes:**
+```
+[Inject: {power: true}]      → Power On
+[Inject: {power: false}]     → Power Off
+[Inject: {mode: 'auto'}]     → Auto Mode
+[Inject: {mode: 'sleep'}]    → Sleep Mode
+[Inject: topic='refresh']    → Fetch Status
+```
+
 ## Protocol
 
 Based on reverse-engineered Philips Air+ cloud API:

@@ -32,7 +32,8 @@
     "version": ">=2.0.0",
     "nodes": {
       "airplus-account": "nodes/airplus-account.js",
-      "airplus-status": "nodes/airplus-status.js"
+      "airplus-status": "nodes/airplus-status.js",
+      "airplus-control": "nodes/airplus-control.js"
     }
   },
   "engines": {

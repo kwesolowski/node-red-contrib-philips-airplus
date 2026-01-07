@@ -1,0 +1,191 @@
+<script type="text/javascript">
+    RED.nodes.registerType('airplus-control', {
+        category: 'Philips Air+',
+        color: '#e67e22',
+        defaults: {
+            name: { value: '' },
+            account: { value: '', type: 'airplus-account', required: true },
+            device: { value: '' },
+            deviceName: { value: '' }
+        },
+        inputs: 1,
+        outputs: 2,
+        outputLabels: ['success', 'error'],
+        icon: 'font-awesome/fa-sliders',
+        paletteLabel: 'air+ control',
+        label: function() {
+            return this.name || this.deviceName || 'air+ control';
+        },
+        oneditprepare: function() {
+            var node = this;
+            var deviceSelect = $('#node-input-device');
+            var deviceNameInput = $('#node-input-deviceName');
+
+            function loadDevices() {
+                var accountId = $('#node-input-account').val();
+                if (!accountId) {
+                    deviceSelect.empty().append('<option value="">-- Select account first --</option>');
+                    return;
+                }
+
+                deviceSelect.empty().append('<option value="">Loading...</option>');
+
+                $.getJSON('philips-airplus/devices?account=' + accountId, function(devices) {
+                    deviceSelect.empty();
+
+                    if (devices.length === 0) {
+                        deviceSelect.append('<option value="">-- No devices found --</option>');
+                        return;
+                    }
+
+                    deviceSelect.append('<option value="">-- Select device --</option>');
+                    devices.forEach(function(d) {
+                        var label = d.name + (d.model ? ' (' + d.model + ')' : '');
+                        var option = $('<option></option>')
+                            .val(d.id)
+                            .text(label)
+                            .data('name', d.name);
+                        if (d.id === node.device) {
+                            option.prop('selected', true);
+                        }
+                        deviceSelect.append(option);
+                    });
+                }).fail(function() {
+                    deviceSelect.empty().append('<option value="">-- Failed to load --</option>');
+                });
+            }
+
+            // Load devices when account changes
+            $('#node-input-account').on('change', loadDevices);
+
+            // Update device name when device changes
+            deviceSelect.on('change', function() {
+                var selected = $(this).find(':selected');
+                var name = selected.data('name') || '';
+                deviceNameInput.val(name);
+            });
+
+            // Initial load
+            loadDevices();
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="airplus-control">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-account"><i class="fa fa-user"></i> Account</label>
+        <input type="text" id="node-input-account">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-device"><i class="fa fa-desktop"></i> Device</label>
+        <select id="node-input-device" style="width: 70%;">
+            <option value="">-- Select device --</option>
+        </select>
+    </div>
+
+    <input type="hidden" id="node-input-deviceName">
+</script>
+
+<script type="text/html" data-help-name="airplus-control">
+    <p>Sends control commands to a Philips Air+ device.</p>
+
+    <h3>Inputs</h3>
+    <p>Send control commands or refresh requests via input messages.</p>
+
+    <h4>Control Command (Simple Format)</h4>
+    <pre>msg.payload = {
+    power: true,            // boolean
+    mode: 'auto',           // 'auto', 'sleep', 'turbo', 'manual'
+    fanSpeed: 8,            // 1-18
+    targetHumidity: 50,     // 40-70 (humidifiers only)
+    childLock: false,       // boolean
+    displayLight: 1         // 0-2 (0=off, 1=dim, 2=bright)
+}</pre>
+
+    <h4>Control Command (AWS Shadow Format)</h4>
+    <pre>msg.payload = {
+    state: {
+        desired: {
+            powerOn: true,
+            mode: 'A',      // 'A'=auto, 'S'=sleep, 'T'=turbo, 'M'=manual
+            om: '8',        // fan speed '1'-'18'
+            rhset: '50',    // humidity '40'-'70'
+            cl: '0',        // child lock '0'|'1'
+            uil: '1'        // display '0'|'1'|'2'
+        }
+    }
+}</pre>
+
+    <h4>Refresh Command</h4>
+    <pre>msg.topic = 'refresh'
+msg.payload = {}  // ignored</pre>
+
+    <h3>Outputs</h3>
+    <p>The node has two outputs:</p>
+
+    <h4>Output 1: Success</h4>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Original payload from input</dd>
+        <dt>controlResult <span class="property-type">object</span></dt>
+        <dd>Control result with:
+            <ul>
+                <li><code>accepted</code> - boolean, true if AWS accepted</li>
+                <li><code>timestamp</code> - command timestamp</li>
+                <li><code>version</code> - shadow version number</li>
+                <li><code>desired</code> - desired state that was set</li>
+            </ul>
+        </dd>
+        <dt>deviceId <span class="property-type">string</span></dt>
+        <dd>Device identifier</dd>
+        <dt>deviceName <span class="property-type">string</span></dt>
+        <dd>Human-readable device name</dd>
+    </dl>
+
+    <h4>Output 2: Error</h4>
+    <dl class="message-properties">
+        <dt>error <span class="property-type">object</span></dt>
+        <dd>Error details with:
+            <ul>
+                <li><code>message</code> - error description</li>
+                <li><code>code</code> - error code (CONNECTION_ERROR, INVALID_PAYLOAD, etc.)</li>
+                <li><code>deviceId</code> - device identifier</li>
+                <li><code>originalPayload</code> - the payload that caused the error</li>
+            </ul>
+        </dd>
+    </dl>
+
+    <h3>Usage with Inject Nodes</h3>
+    <p>Create inject nodes for manual control:</p>
+    <pre>[Inject: {power: true}]      ──> Power On
+[Inject: {power: false}]     ──> Power Off
+[Inject: {mode: 'auto'}]     ──> Auto Mode
+[Inject: {mode: 'sleep'}]    ──> Sleep Mode
+[Inject: {mode: 'turbo'}]    ──> Turbo Mode
+[Inject: topic='refresh']    ──> Fetch Status</pre>
+
+    <h3>Details</h3>
+    <p>This node sends control commands to Philips Air+ devices via AWS IoT Device Shadow.
+    Commands are sent as "desired state" updates, and the device responds by updating its actual state.</p>
+
+    <p>The node auto-detects payload format - use simple properties like <code>{power: true}</code>
+    or AWS shadow format <code>{state: {desired: {...}}}</code>.</p>
+
+    <p>Use <code>msg.topic = 'refresh'</code> to fetch current device state without sending a control command.</p>
+
+    <h3>Error Handling</h3>
+    <p>Errors are output on port 2. Common error codes:</p>
+    <ul>
+        <li><code>CONNECTION_ERROR</code> - Not connected to device</li>
+        <li><code>INVALID_PAYLOAD</code> - Payload format invalid</li>
+        <li><code>INVALID_PROPERTY</code> - Property value out of range</li>
+        <li><code>TIMEOUT</code> - Command timeout (10s)</li>
+        <li><code>SHADOW_REJECTED</code> - AWS IoT rejected the update</li>
+    </ul>
+</script>
