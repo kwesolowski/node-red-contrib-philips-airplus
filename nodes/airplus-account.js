@@ -210,6 +210,7 @@ module.exports = function (RED) {
                         node.error(`MQTT error (${deviceName}): ${err.message}`);
                     },
                     log: (msg) => node.log(msg),
+                    verboseLogging: config.verboseLogging || false,
                 });
 
                 mqttClients.set(deviceId, mqttClient);
