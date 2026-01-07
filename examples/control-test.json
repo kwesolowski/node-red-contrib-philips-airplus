@@ -3,7 +3,7 @@
         "id": "example-comment",
         "type": "comment",
         "name": "Air+ Control Test - Click inject buttons to test each command",
-        "info": "This example demonstrates all control capabilities:\n\n**Power Control:**\n- Power ON/OFF (keeps current mode)\n\n**Mode Control:**  \n- Auto, Sleep, Turbo, Manual modes\n- Changes mode without affecting power\n\n**Fan Speed:**\n- Low (3), Medium (9), High (15)\n- Only changes speed, not mode/power\n\n**Combined:**\n- Power ON + Auto mode together\n\n**Refresh:**\n- Get current device state\n\n**Setup:**\n1. Configure account in nodes\n2. Select your device  \n3. Deploy\n4. Use inject buttons to test",
+        "info": "This example demonstrates all v3 control capabilities:\n\n**Power Control:**\n- Power ON/OFF (keeps current mode)\n\n**Mode Control:**  \n- Auto, Sleep, Turbo, Manual modes\n- Changes mode without affecting power\n\n**Fan Speed:**\n- Low (3), Medium (9), High (15)\n- Only changes speed, not mode/power\n\n**Humidity (AC3737 with humidifier):**\n- 40%, 60% target humidity\n\n**Display Light:**\n- Off (0), Dim (50), Bright (100)\n\n**Child Lock:**\n- ON/OFF (v3 protocol: D03103)\n\n**Combined:**\n- Power ON + Auto mode together\n\n**Refresh:**\n- Get current device state\n\n**Setup:**\n1. Configure account in nodes\n2. Select your device  \n3. Deploy\n4. Use inject buttons to test",
         "x": 270,
         "y": 40,
         "wires": []
@@ -129,6 +129,111 @@
         "wires": [["control-node"]]
     },
     {
+        "id": "inject-humidity-40",
+        "type": "inject",
+        "name": "Humidity: 40%",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"targetHumidity\":40}",
+        "payloadType": "json",
+        "x": 140,
+        "y": 480,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-humidity-60",
+        "type": "inject",
+        "name": "Humidity: 60%",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"targetHumidity\":60}",
+        "payloadType": "json",
+        "x": 140,
+        "y": 520,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-light-off",
+        "type": "inject",
+        "name": "Light: Off",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"displayLight\":0}",
+        "payloadType": "json",
+        "x": 120,
+        "y": 580,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-light-dim",
+        "type": "inject",
+        "name": "Light: Dim",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"displayLight\":50}",
+        "payloadType": "json",
+        "x": 120,
+        "y": 620,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-light-bright",
+        "type": "inject",
+        "name": "Light: Bright",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"displayLight\":100}",
+        "payloadType": "json",
+        "x": 130,
+        "y": 660,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-lock-on",
+        "type": "inject",
+        "name": "Child Lock: ON",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"childLock\":true}",
+        "payloadType": "json",
+        "x": 140,
+        "y": 720,
+        "wires": [["control-node"]]
+    },
+    {
+        "id": "inject-lock-off",
+        "type": "inject",
+        "name": "Child Lock: OFF",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "{\"childLock\":false}",
+        "payloadType": "json",
+        "x": 140,
+        "y": 760,
+        "wires": [["control-node"]]
+    },
+    {
         "id": "inject-combined",
         "type": "inject",
         "name": "ON + Auto",
@@ -140,7 +245,7 @@
         "payload": "{\"power\":true,\"mode\":\"auto\"}",
         "payloadType": "json",
         "x": 120,
-        "y": 480,
+        "y": 820,
         "wires": [["control-node"]]
     },
     {
@@ -155,7 +260,7 @@
         "payload": "{}",
         "payloadType": "json",
         "x": 110,
-        "y": 540,
+        "y": 880,
         "wires": [["control-node"]]
     },
     {
@@ -166,7 +271,7 @@
         "device": "",
         "deviceName": "",
         "x": 330,
-        "y": 300,
+        "y": 490,
         "wires": [["debug-success"], ["debug-error"]]
     },
     {
@@ -177,7 +282,7 @@
         "console": false,
         "complete": "true",
         "x": 520,
-        "y": 280,
+        "y": 470,
         "wires": []
     },
     {
@@ -188,7 +293,7 @@
         "console": false,
         "complete": "true",
         "x": 510,
-        "y": 320,
+        "y": 510,
         "wires": []
     }
 ]
