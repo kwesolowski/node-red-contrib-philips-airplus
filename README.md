@@ -29,6 +29,7 @@ Then restart Node-RED.
 Manages authentication and connection to Philips cloud.
 
 **Setup:**
+
 1. Add config node and click "Get Auth URL"
 2. Open URL in browser, log in to Philips account
 3. Copy redirect URL (`com.philips.air://loginredirect?code=...`)
@@ -39,6 +40,7 @@ Manages authentication and connection to Philips cloud.
 Receives real-time status updates from a device.
 
 **Output:**
+
 ```javascript
 msg.payload = {
     power: true,           // on/off
@@ -56,6 +58,7 @@ msg.deviceName = 'Living Room';
 ## Protocol
 
 Based on reverse-engineered Philips Air+ cloud API:
+
 - OAuth via `cdc.accounts.home.id`
 - REST API at `prod.eu-da.iot.versuni.com`
 - MQTT over WebSocket at `ats.prod.eu-da.iot.versuni.com`

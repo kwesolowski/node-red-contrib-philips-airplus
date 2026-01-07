@@ -5,11 +5,13 @@ Captured from Android app traffic on 2026-01-06 using mitmproxy + Frida SSL bypa
 ## API Endpoints Summary
 
 ### 1. MxChip/Fog API (Main Device API)
+
 **Host**: `23.38.108.31` (fog-da.philips.com.cn)
 
 Used for Philips air purifiers using MxChip IoT platform.
 
 #### Get Server Time
+
 ```http
 GET /device/serverTime/
 User-Agent: MxChip&Fog&Hyj#com.philips.ph.homecare#_v3.16.1
@@ -35,6 +37,7 @@ Response 200 OK:
 ```
 
 #### Get Token
+
 ```http
 POST /enduser/v2/getToken/
 Content-Type: application/json; charset=utf-8
@@ -63,10 +66,12 @@ Response 200 OK:
 **Signature Algorithm**: Double HMAC-SHA256 (verified via Frida runtime capture)
 
 **Secret Key**: `a_zagf9sb2dpbiImtycwibgfzd6nksd65m`
+
 - Extracted at runtime using Frida hook on `HttpRequestManager.setSecret()`
 - Stored encrypted in APK, decrypted via `l6.a.e()` using AES/GCM
 
 **Signature Generation Steps**:
+
 1. Build params string with URL-encoded username, sorted alphabetically:
    ```
    app_id={app_id}&timestamp={timestamp}&username={url_encoded_username}
@@ -75,6 +80,7 @@ Response 200 OK:
 3. Second HMAC: `signature = HMAC-SHA256(hmac1_hex, username).hex()` (NOTE: data=hmac1, key=username)
 
 **Python Implementation**:
+
 ```python
 import hmac
 import hashlib
@@ -97,11 +103,13 @@ def generate_signature(app_id: str, timestamp: str, username: str) -> str:
 ```
 
 **Verified Example** (from Frida capture):
+
 - Input: `app_id=9fd505fa9c7111e9a1e3061302926720, timestamp=1767670901, username=ahc:id=5790965ee892b099963b9937a45f4510`
 - HMAC1: `f2daf1cd9cb7b107f44be0042008b3325badf7cd9ea92403b736133fffe270dd`
 - Signature: `1dd7def42a90e33a71b58037273400c73799b379bdeaa298aada4192962103a0`
 
 **JWT Token Decoded**:
+
 ```json
 {
   "identification": "ahc:id=5790965ee892b099963b9937a45f4510",
@@ -112,9 +120,11 @@ def generate_signature(app_id: str, timestamp: str, username: str) -> str:
   "orig_iat": 1767669312
 }
 ```
+
 Token expires in ~7 days (604800 seconds).
 
 #### Get Device List
+
 ```http
 GET /enduser/deviceList/
 Authorization: jwt eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
@@ -132,6 +142,7 @@ Response 200 OK:
 ```
 
 #### Update Language
+
 ```http
 POST /enduser/updateLanguage/
 Authorization: jwt <token>
@@ -154,11 +165,13 @@ Response 200 OK:
 ```
 
 ### 2. Air Matters API
+
 **Host**: `data.air-matters.com` (23.92.25.169)
 
 App configuration and device catalog.
 
 #### App Config
+
 ```http
 POST /3By9ZxlO_unbI_Vv
 Content-Type: application/json; charset=utf-8
@@ -205,11 +218,13 @@ Response 200 OK:
 This suggests the user identifier is derived from a device-based identifier, not the OAuth token directly.
 
 ### 3. Philips OAuth (home.id)
+
 **Host**: `cdc.accounts.home.id`
 
 OIDC with PKCE flow. Traffic not captured due to Chrome WebView SSL pinning.
 
 #### Authorize
+
 ```
 GET /oidc/op/v1.0/4_JGZWlP8eQHpEqkvQElolbA/authorize
 
@@ -223,6 +238,7 @@ Query params:
 ```
 
 ### 4. Configuration API
+
 **Host**: `13.227.146.48` (AWS CloudFront)
 
 ```
@@ -230,6 +246,7 @@ GET /configuration?countryCode=US
 ```
 
 ### 5. Push Notifications
+
 **Host**: `139.162.109.115`
 
 ```
@@ -238,6 +255,7 @@ POST /feeds/articles
 ```
 
 ### 6. Notices
+
 **Host**: `45.79.80.248`
 
 ```
@@ -247,6 +265,7 @@ POST /get_notice
 ## Device Models (from Air Matters API)
 
 AC3737/10 is listed as model "Carnation":
+
 ```json
 {
     "model": "Carnation",
@@ -259,6 +278,7 @@ AC3737/10 is listed as model "Carnation":
 ```
 
 Other model codenames:
+
 - **Pegasus**: AMF765, AMF870, AMF865, AMF970
 - **Apollo**: CX5120
 - **Trident**: CX3550
@@ -272,42 +292,43 @@ Other model codenames:
 
 ## Authentication Flow
 
-1. User opens app
-2. App generates IDFV (device identifier) - stored as `idfv`
-3. OAuth redirect to `cdc.accounts.home.id`
-4. User logs in via Google/Apple/Email
-5. OAuth callback returns authorization code
-6. App exchanges code for tokens (id_token, access_token)
-7. App derives `ahc:id=<hash>` - appears to be MD5 or similar of IDFV
-8. App calls `/device/serverTime/` to get timestamp
-9. App calls `/enduser/v2/getToken/` with:
-   - `username`: `ahc:id=<idfv_hash>`
-   - `app_id`: `9fd505fa9c7111e9a1e3061302926720`
-   - `timestamp`: Server timestamp (string)
-   - `signature`: HMAC-SHA256 of request
+01. User opens app
+02. App generates IDFV (device identifier) - stored as `idfv`
+03. OAuth redirect to `cdc.accounts.home.id`
+04. User logs in via Google/Apple/Email
+05. OAuth callback returns authorization code
+06. App exchanges code for tokens (id_token, access_token)
+07. App derives `ahc:id=<hash>` - appears to be MD5 or similar of IDFV
+08. App calls `/device/serverTime/` to get timestamp
+09. App calls `/enduser/v2/getToken/` with:
+    - `username`: `ahc:id=<idfv_hash>`
+    - `app_id`: `9fd505fa9c7111e9a1e3061302926720`
+    - `timestamp`: Server timestamp (string)
+    - `signature`: HMAC-SHA256 of request
 10. MxChip returns JWT token (valid 7 days)
 11. App calls `/enduser/deviceList/` with JWT
 
 ## Key Identifiers
 
-| Identifier | Value |
-|------------|-------|
-| OIDC Tenant | `4_JGZWlP8eQHpEqkvQElolbA` |
-| OAuth Client ID | `-XsK7O6iEkLml77yDGDUi0ku` |
-| MxChip App ID | `9fd505fa9c7111e9a1e3061302926720` |
-| MxChip HMAC Secret | `a_zagf9sb2dpbiImtycwibgfzd6nksd65m` |
-| Air Matters App ID | `Iw1MKWYuDQr5K9Rw` |
-| Air Matters Secret | `pI0FqZwRp4u_ON6U` |
-| MxChip API Host | `23.38.108.31` |
-| Air Matters Host | `23.92.25.169` |
-| Philips API URL | `https://www.api.air.philips.com/` |
-| ECD Portal URL | `https://www.ecdinterface.philips.com/DevicePortalICPRequestHandler/RequestHandler.ashx` |
-| Cloud Client ID | `000000fff0000024` |
-| Cloud Client Key | `68e7f2ef8f445d56343e53ffed7cab05` |
+| Identifier         | Value                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| OIDC Tenant        | `4_JGZWlP8eQHpEqkvQElolbA`                                                               |
+| OAuth Client ID    | `-XsK7O6iEkLml77yDGDUi0ku`                                                               |
+| MxChip App ID      | `9fd505fa9c7111e9a1e3061302926720`                                                       |
+| MxChip HMAC Secret | `a_zagf9sb2dpbiImtycwibgfzd6nksd65m`                                                     |
+| Air Matters App ID | `Iw1MKWYuDQr5K9Rw`                                                                       |
+| Air Matters Secret | `pI0FqZwRp4u_ON6U`                                                                       |
+| MxChip API Host    | `23.38.108.31`                                                                           |
+| Air Matters Host   | `23.92.25.169`                                                                           |
+| Philips API URL    | `https://www.api.air.philips.com/`                                                       |
+| ECD Portal URL     | `https://www.ecdinterface.philips.com/DevicePortalICPRequestHandler/RequestHandler.ashx` |
+| Cloud Client ID    | `000000fff0000024`                                                                       |
+| Cloud Client Key   | `68e7f2ef8f445d56343e53ffed7cab05`                                                       |
 
 ## Rate Limits
 
 From response headers:
+
 - `/device/serverTime/`: 5 req/sec
 - `/enduser/deviceList/`: 10 req/sec
 
@@ -317,6 +338,7 @@ Devices are bound to users during WiFi provisioning (EWS - Easy Wireless Setup).
 Device list is empty for new logins without bound devices.
 
 To bind devices, the app uses:
+
 - Local AP provisioning (device creates WiFi hotspot)
 - mDNS/CoAP discovery on local network
 - Device claim by serial/MAC via cloud API (not captured)
@@ -328,6 +350,7 @@ To bind devices, the app uses:
 Devices are controlled via AWS IoT Core using MQTT over WebSocket. The `/enduser/v2/mqttInfo/` endpoint provides presigned WebSocket URLs with temporary AWS credentials.
 
 #### Get MQTT Connection Info
+
 ```http
 POST /enduser/v2/mqttInfo/
 Authorization: jwt <token>
@@ -360,14 +383,14 @@ The `host` field contains a ready-to-use WebSocket URL with AWS SigV4 credential
 
 Device control uses standard AWS IoT Device Shadow topics:
 
-| Topic | Purpose |
-|-------|---------|
-| `$aws/things/{thingName}/shadow/get` | Request current device state |
-| `$aws/things/{thingName}/shadow/get/accepted` | Subscribe: state response |
-| `$aws/things/{thingName}/shadow/get/rejected` | Subscribe: request errors |
-| `$aws/things/{thingName}/shadow/update` | Publish desired state changes |
+| Topic                                            | Purpose                        |
+| ------------------------------------------------ | ------------------------------ |
+| `$aws/things/{thingName}/shadow/get`             | Request current device state   |
+| `$aws/things/{thingName}/shadow/get/accepted`    | Subscribe: state response      |
+| `$aws/things/{thingName}/shadow/get/rejected`    | Subscribe: request errors      |
+| `$aws/things/{thingName}/shadow/update`          | Publish desired state changes  |
 | `$aws/things/{thingName}/shadow/update/accepted` | Subscribe: update confirmation |
-| `$aws/things/{thingName}/shadow/update/rejected` | Subscribe: update errors |
+| `$aws/things/{thingName}/shadow/update/rejected` | Subscribe: update errors       |
 
 **Note**: `thingName` is the `device_id` (e.g., `99d5086d8f9f11eeb22913de1077e90c`).
 
@@ -404,6 +427,7 @@ Device control uses standard AWS IoT Device Shadow topics:
 ### Control Commands
 
 **Power On/Off:**
+
 ```json
 {
     "state": {
@@ -469,16 +493,16 @@ The HMAC signature uses the OAuth User ID as `username`.
 
 ## Implementation Status
 
-| Component | Status |
-|-----------|--------|
-| Authentication (HMAC signature) | ✅ Documented |
-| Device list API | ✅ Documented |
-| MQTT connection info | ✅ Documented |
-| AWS IoT Shadow topics | ✅ Documented |
-| Power control | ✅ Documented |
-| Air quality readings | ⏳ Need property names |
-| Fan speed control | ⏳ Need property names |
-| Mode control | ⏳ Need property names |
+| Component                       | Status                 |
+| ------------------------------- | ---------------------- |
+| Authentication (HMAC signature) | ✅ Documented          |
+| Device list API                 | ✅ Documented          |
+| MQTT connection info            | ✅ Documented          |
+| AWS IoT Shadow topics           | ✅ Documented          |
+| Power control                   | ✅ Documented          |
+| Air quality readings            | ⏳ Need property names |
+| Fan speed control               | ⏳ Need property names |
+| Mode control                    | ⏳ Need property names |
 
 ## Next Steps
 
@@ -493,12 +517,16 @@ The HMAC signature uses the OAuth User ID as `username`.
 Located in `tools/` directory.
 
 ### SSL Bypass
+
 File: `tools/frida-ssl-bypass.js`
+
 - Bypasses TrustManagerImpl, OkHttp3 CertificatePinner, SSLContext, etc.
 - Run: `frida -U -f com.philips.ph.homecare -l tools/frida-ssl-bypass.js`
 
 ### Secret Extraction
+
 File: `tools/frida-get-secret.js`
+
 - Hooks `l6.a.e()` decryption and `HttpRequestManager.setSecret()`
 - Captures actual HMAC inputs/outputs
 - Run: `frida -U -f com.philips.ph.homecare -l tools/frida-get-secret.js`
