@@ -60,6 +60,7 @@ msg.deviceName = 'Living Room';
 Sends control commands to a device.
 
 **Input (simple format):**
+
 ```javascript
 msg.payload = {
     power: true,           // on/off
@@ -72,16 +73,19 @@ msg.payload = {
 ```
 
 **Refresh command:**
+
 ```javascript
 msg.topic = 'refresh';
 msg.payload = {};  // ignored
 ```
 
 **Outputs:**
+
 - Port 1: Success with `msg.controlResult`
 - Port 2: Error with `msg.error`
 
 **Usage with inject nodes:**
+
 ```
 [Inject: {power: true}]      → Power On
 [Inject: {power: false}]     → Power Off
