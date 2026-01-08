@@ -65,7 +65,7 @@ module.exports = function (RED) {
             }
 
             if (parts.length > 0) {
-                const connected = accountNode.isConnected();
+                const connected = accountNode.isConnected(deviceId);
                 node.status({
                     fill: connected ? 'green' : 'yellow',
                     shape: connected ? 'dot' : 'ring',
@@ -107,7 +107,7 @@ module.exports = function (RED) {
         accountNode.on('connected', onConnected);
 
         // Wait for account node to be ready
-        if (accountNode.isConnected()) {
+        if (accountNode.isConnected(deviceId)) {
             subscribe();
         } else {
             node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for connection...' });

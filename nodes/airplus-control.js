@@ -141,7 +141,7 @@ module.exports = function (RED) {
 
         // Update status indicator based on connection state
         function updateConnectionStatus() {
-            const connected = accountNode.isConnected();
+            const connected = accountNode.isConnected(deviceId);
             node.status({
                 fill: connected ? 'green' : 'yellow',
                 shape: connected ? 'dot' : 'ring',
