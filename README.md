@@ -17,12 +17,21 @@ Older devices using v1 or v2 protocols are not supported.
 
 ## Installation
 
+### Via npm
+
 ```bash
 cd ~/.node-red
-npm install /path/to/node-red-contrib-philips-airplus
+npm install node-red-contrib-philips-airplus
 ```
 
 Then restart Node-RED.
+
+### Via Palette Manager
+
+1. Open Node-RED editor
+2. Menu → Manage palette → Install tab
+3. Search for "philips-airplus"
+4. Click Install
 
 ## Nodes
 
@@ -108,6 +117,57 @@ msg.payload = {};  // ignored
 [Inject: {fanSpeed: 12}]     → Change Fan Speed
 [Inject: topic='refresh']    → Fetch Status
 ```
+
+## CLI Authentication Tool
+
+The package includes a CLI tool for authenticating outside of Node-RED:
+
+```bash
+npm run auth
+```
+
+This tool works in two modes:
+- **Manual**: Opens browser, you paste the redirect URL
+- **Headless** (requires Playwright): Fully automated
+
+To install Playwright for headless auth:
+
+```bash
+npm install --no-save playwright
+```
+
+## Examples
+
+See [`examples/control-test.json`](examples/control-test.json) for a complete test flow with inject nodes for all control commands.
+
+## Troubleshooting
+
+### OAuth authentication fails
+
+- Check browser popup blockers
+- Try CLI auth tool: `npm run auth`
+- Ensure you're using correct Philips account credentials
+
+### MQTT connection issues
+
+- Verify device is online in Philips app
+- Check credentials haven't expired (re-authenticate if needed)
+- Account node shows connection status for each device
+
+### Node shows "disconnected"
+
+- Account config may need re-authentication
+- Click "Clear Credentials" and authenticate again
+
+## Disclaimer
+
+This package is based on reverse-engineered protocol from the official Philips Air+ Android app. It is **not affiliated with or endorsed by Philips**.
+
+**Compatibility:**
+- Supports v3 protocol devices (AC3737/Carnation, Apollo series)
+- V1/V2 devices are not compatible
+
+**Stability:** Protocol may change if Philips updates their cloud API. This is version 0.x indicating the API surface may evolve.
 
 ## Protocol
 
