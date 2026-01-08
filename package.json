@@ -14,7 +14,7 @@
   "author": "Krzysztof Wesolowski",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kwesolowski/node-red-contrib-philips-airplus.git"
+    "url": "git+https://github.com/kwesolowski/node-red-contrib-philips-airplus.git"
   },
   "bugs": "https://github.com/kwesolowski/node-red-contrib-philips-airplus/issues",
   "homepage": "https://github.com/kwesolowski/node-red-contrib-philips-airplus#readme",
