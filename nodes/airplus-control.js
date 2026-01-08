@@ -139,13 +139,41 @@ module.exports = function (RED) {
             }
         });
 
-        // Initialize status
-        const connected = accountNode.isConnected();
-        node.status({
-            fill: connected ? 'green' : 'yellow',
-            shape: connected ? 'dot' : 'ring',
-            text: connected ? 'ready' : 'connecting...',
+        // Update status indicator based on connection state
+        function updateConnectionStatus() {
+            const connected = accountNode.isConnected();
+            node.status({
+                fill: connected ? 'green' : 'yellow',
+                shape: connected ? 'dot' : 'ring',
+                text: connected ? 'ready' : 'connecting...',
+            });
+        }
+
+        // Listen to connection events for this specific device
+        const onConnected = (connectedDeviceId) => {
+            if (connectedDeviceId === deviceId) {
+                updateConnectionStatus();
+            }
+        };
+
+        const onDisconnected = (disconnectedDeviceId) => {
+            if (disconnectedDeviceId === deviceId) {
+                updateConnectionStatus();
+            }
+        };
+
+        accountNode.on('connected', onConnected);
+        accountNode.on('disconnected', onDisconnected);
+
+        // Cleanup on close
+        node.on('close', function (done) {
+            accountNode.removeListener('connected', onConnected);
+            accountNode.removeListener('disconnected', onDisconnected);
+            done();
         });
+
+        // Initialize status
+        updateConnectionStatus();
     }
 
     RED.nodes.registerType('airplus-control', AirplusControlNode);

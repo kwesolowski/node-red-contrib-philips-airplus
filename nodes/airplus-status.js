@@ -96,27 +96,21 @@ module.exports = function (RED) {
             }
         }
 
+        // Listen to connection events for this specific device
+        const onConnected = (connectedDeviceId) => {
+            if (connectedDeviceId === deviceId && !accountNode.isConnected()) {
+                // Device just connected - subscribe to updates
+                subscribe();
+            }
+        };
+
+        accountNode.on('connected', onConnected);
+
         // Wait for account node to be ready
         if (accountNode.isConnected()) {
             subscribe();
         } else {
-            // Retry subscription after a delay
-            const retryInterval = setInterval(() => {
-                if (accountNode.isConnected()) {
-                    clearInterval(retryInterval);
-                    subscribe();
-                }
-            }, 2000);
-
-            // Give up after 60 seconds
-            setTimeout(() => {
-                clearInterval(retryInterval);
-                if (!accountNode.isConnected()) {
-                    node.status({ fill: 'red', shape: 'ring', text: 'connection timeout' });
-                }
-            }, 60000);
-
-            node.on('close', () => clearInterval(retryInterval));
+            node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for connection...' });
         }
 
         // Handle manual trigger input
@@ -148,6 +142,7 @@ module.exports = function (RED) {
         // Cleanup on close
         node.on('close', function (done) {
             accountNode.unsubscribe(deviceId, onStatusUpdate);
+            accountNode.removeListener('connected', onConnected);
             done();
         });
 

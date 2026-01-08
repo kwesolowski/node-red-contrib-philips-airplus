@@ -201,10 +201,14 @@ module.exports = function (RED) {
                     onConnect: () => {
                         node.log(`MQTT connected: ${deviceName}`);
                         updateStatus();
+                        // Emit event for this device's connection
+                        node.emit('connected', deviceId);
                     },
                     onDisconnect: () => {
                         node.warn(`MQTT disconnected: ${deviceName}`);
                         updateStatus();
+                        // Emit event for this device's disconnection
+                        node.emit('disconnected', deviceId);
                     },
                     onError: (err) => {
                         node.error(`MQTT error (${deviceName}): ${err.message}`);
