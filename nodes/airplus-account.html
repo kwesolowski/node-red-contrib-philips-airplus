@@ -61,7 +61,13 @@
 
                             // Auto-load if Node-RED credentials are missing
                             var hasNodeRedCreds = node.credentials && node.credentials.refreshToken;
+                            console.log('[airplus-account] Auto-load check:', {
+                                hasCredentials: !!node.credentials,
+                                hasRefreshToken: !!hasNodeRedCreds,
+                                willAutoLoad: !hasNodeRedCreds
+                            });
                             if (!hasNodeRedCreds) {
+                                console.log('[airplus-account] Auto-loading CLI credentials...');
                                 $('#load-cli-btn').click();
                             }
                         } else {
@@ -438,6 +444,22 @@
             });
 
             updateAuthStatus();
+
+            // Fetch and display version info
+            $.ajax({
+                url: 'philips-airplus/version',
+                type: 'GET',
+                success: function(data) {
+                    var versionText = 'v' + data.package;
+                    if (data.git) {
+                        versionText += ' (git: ' + data.git + ')';
+                    }
+                    $('#version-info').text(versionText);
+                },
+                error: function() {
+                    $('#version-info').text('version unknown');
+                }
+            });
         }
     });
 </script>
@@ -580,6 +602,10 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 11px; color: #999; text-align: right;">
+        <span id="version-info">Loading version...</span>
     </div>
 
     <style>

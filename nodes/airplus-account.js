@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 const {
     generatePkce,
     generateState,
@@ -580,6 +581,29 @@ module.exports = function (RED) {
         } catch (err) {
             RED.log.error(`[airplus] Error reading CLI credentials: ${err.message}`);
             res.json({ exists: false, error: err.message });
+        }
+    });
+
+    // Get version info (package.json + git describe if available)
+    RED.httpAdmin.get('/philips-airplus/version', function (req, res) {
+        try {
+            const packageJson = require('../package.json');
+            let gitVersion = null;
+            try {
+                gitVersion = execSync('git describe --always --dirty', {
+                    cwd: __dirname,
+                    encoding: 'utf8',
+                    timeout: 1000,
+                }).trim();
+            } catch (e) {
+                // Ignore git errors (not a git repo or git not installed)
+            }
+            res.json({
+                package: packageJson.version,
+                git: gitVersion,
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
         }
     });
 
