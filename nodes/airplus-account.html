@@ -25,7 +25,9 @@
                     var expDate = new Date(parseInt(expiresAt, 10) * 1000);
                     var now = new Date();
                     if (expDate > now) {
-                        $('#auth-status').text('Authenticated (User: ' + (node.credentials.userId || 'unknown') + ')')
+                        var userId = node.credentials.userId || 'unknown';
+                        var userIdShort = userId.length > 8 ? userId.substring(0, 8) + '...' : userId;
+                        $('#auth-status').text('Authenticated (User: ' + userIdShort + ')')
                             .removeClass('auth-error').addClass('auth-success');
                         $('#auth-section-setup').hide();
                         $('#auth-section-authenticated').show();
@@ -484,7 +486,7 @@
 
     <div class="form-row">
         <label><i class="fa fa-key"></i> Authentication</label>
-        <span id="auth-status" style="margin-left: 10px; font-weight: bold;"></span>
+        <div id="auth-status" style="margin-left: 100px; margin-top: -5px; font-weight: bold;"></div>
     </div>
 
     <div id="auth-section-authenticated" style="display: none; margin-left: 100px; margin-bottom: 20px;">
