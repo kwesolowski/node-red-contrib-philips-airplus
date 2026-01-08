@@ -58,6 +58,12 @@
                             );
                             $('#load-cli-btn').show();
                             $('#cli-instructions').hide();
+
+                            // Auto-load if Node-RED credentials are missing
+                            var hasNodeRedCreds = node.credentials && node.credentials.refreshToken;
+                            if (!hasNodeRedCreds) {
+                                $('#load-cli-btn').click();
+                            }
                         } else {
                             $('#cli-status').html('<span class="auth-error">No CLI credentials</span>');
                             $('#load-cli-btn').hide();
@@ -108,52 +114,119 @@
                 $('#import-json-section').toggle();
             });
 
-            // Import JSON credentials
-            $('#import-json-btn').on('click', function() {
-                var jsonText = $('#import-json-input').val().trim();
-                if (!jsonText) {
-                    RED.notify('Please paste JSON credentials', 'error');
+            // File upload import handlers
+            function importCredentialsFile(file) {
+                if (!file) {
+                    RED.notify('No file selected', 'error');
                     return;
                 }
 
-                var data;
-                try {
-                    data = JSON.parse(jsonText);
-                } catch (e) {
-                    RED.notify('Invalid JSON: ' + e.message, 'error');
+                if (!file.name.endsWith('.json')) {
+                    RED.notify('Please select a JSON file', 'error');
                     return;
                 }
 
-                if (!data.user_id || !data.refresh_token) {
-                    RED.notify('JSON must contain user_id and refresh_token', 'error');
-                    return;
-                }
-
-                $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
-
-                $.ajax({
-                    url: 'philips-airplus/import-credentials',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ node: node.id, credentials: data }),
-                    success: function(result) {
-                        if (result.success) {
-                            RED.notify('Credentials imported successfully!', 'success');
-                            node.credentials = node.credentials || {};
-                            node.credentials.userId = result.userId;
-                            node.credentials.expiresAt = String(result.expiresAt);
-                            updateAuthStatus();
-                            $('#import-json-input').val('');
-                            $('#import-json-section').hide();
-                        }
-                        $('#import-json-btn').prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
-                    },
-                    error: function(xhr) {
-                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-                        RED.notify('Import failed: ' + error, 'error');
-                        $('#import-json-btn').prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    var jsonText = e.target.result;
+                    var data;
+                    try {
+                        data = JSON.parse(jsonText);
+                    } catch (err) {
+                        RED.notify('Invalid JSON: ' + err.message, 'error');
+                        return;
                     }
+
+                    if (!data.user_id || !data.refresh_token) {
+                        RED.notify('JSON must contain user_id and refresh_token', 'error');
+                        return;
+                    }
+
+                    $('#import-file-status').html('<i class="fa fa-spinner fa-spin"></i> Importing...').show();
+
+                    $.ajax({
+                        url: 'philips-airplus/import-credentials',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ node: node.id, credentials: data }),
+                        success: function(result) {
+                            if (result.success) {
+                                RED.notify('Credentials imported successfully!', 'success');
+                                node.credentials = node.credentials || {};
+                                node.credentials.userId = result.userId;
+                                node.credentials.expiresAt = String(result.expiresAt);
+                                updateAuthStatus();
+                                $('#import-json-section').hide();
+                                $('#import-file-status').hide();
+                            }
+                        },
+                        error: function(xhr) {
+                            var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                            RED.notify('Import failed: ' + error, 'error');
+                            $('#import-file-status').hide();
+                        }
+                    });
+                };
+                reader.onerror = function() {
+                    RED.notify('Failed to read file', 'error');
+                };
+                reader.readAsText(file);
+            }
+
+            // File input change handler
+            $('#import-file-input').on('change', function(e) {
+                var file = e.target.files[0];
+                if (file) {
+                    importCredentialsFile(file);
+                }
+                // Reset input so same file can be selected again
+                $(this).val('');
+            });
+
+            // Browse button triggers file input
+            $('#import-browse-btn').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $('#import-file-input').click();
+            });
+
+            // Drag and drop handlers
+            var dropZone = $('#import-drop-zone');
+
+            dropZone.on('click', function() {
+                $('#import-file-input').click();
+            });
+
+            dropZone.on('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css({
+                    'border-color': '#0070d2',
+                    'background': '#e8f4ff'
                 });
+            });
+
+            dropZone.on('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css({
+                    'border-color': '#ccc',
+                    'background': '#fafafa'
+                });
+            });
+
+            dropZone.on('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css({
+                    'border-color': '#ccc',
+                    'background': '#fafafa'
+                });
+
+                var files = e.originalEvent.dataTransfer.files;
+                if (files.length > 0) {
+                    importCredentialsFile(files[0]);
+                }
             });
 
             // Toggle manual auth section
@@ -441,17 +514,27 @@
 
         <div id="import-json-section" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
             <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                Paste JSON from <code>philips-airplus-auth --export</code>:
+                Import JSON from <code>philips-airplus-auth --export</code>:
             </p>
-            <div class="form-row">
-                <textarea id="import-json-input" rows="5" style="width: 100%; font-family: monospace; font-size: 11px;"
-                    placeholder='{"user_id": "...", "refresh_token": "...", ...}'></textarea>
-            </div>
-            <div class="form-row">
-                <button type="button" id="import-json-btn" class="red-ui-button red-ui-button-primary">
-                    <i class="fa fa-upload"></i> Import
+            <input type="file" id="import-file-input" accept=".json,application/json" style="display: none;">
+            <div id="import-drop-zone" style="
+                border: 2px dashed #ccc;
+                border-radius: 4px;
+                padding: 30px;
+                text-align: center;
+                cursor: pointer;
+                background: #fafafa;
+                transition: all 0.2s ease;
+            ">
+                <i class="fa fa-upload" style="font-size: 32px; color: #999; margin-bottom: 10px;"></i>
+                <p style="margin: 10px 0; color: #666; font-size: 13px;">
+                    Drag JSON file here or click to browse
+                </p>
+                <button type="button" id="import-browse-btn" class="red-ui-button">
+                    <i class="fa fa-folder-open"></i> Browse Files
                 </button>
             </div>
+            <div id="import-file-status" style="margin-top: 10px; font-size: 12px; display: none;"></div>
         </div>
 
         <!-- Manual auth (fallback) -->
@@ -502,6 +585,10 @@
     <style>
         .auth-success { color: #2ecc71; }
         .auth-error { color: #e74c3c; }
+        #import-drop-zone:hover {
+            border-color: #0070d2;
+            background: #f0f8ff;
+        }
     </style>
 </script>
 
