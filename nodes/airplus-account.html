@@ -15,6 +15,7 @@
         },
         oneditprepare: function() {
             var node = this;
+            var autoLoadAttempted = false;
 
             function updateAuthStatus() {
                 var hasCredentials = node.credentials && node.credentials.hasOwnProperty('refreshToken');
@@ -59,14 +60,16 @@
                             $('#load-cli-btn').show();
                             $('#cli-instructions').hide();
 
-                            // Auto-load if Node-RED credentials are missing
+                            // Auto-load if Node-RED credentials are missing (only once)
                             var hasNodeRedCreds = node.credentials && node.credentials.refreshToken;
                             console.log('[airplus-account] Auto-load check:', {
                                 hasCredentials: !!node.credentials,
                                 hasRefreshToken: !!hasNodeRedCreds,
-                                willAutoLoad: !hasNodeRedCreds
+                                autoLoadAttempted: autoLoadAttempted,
+                                willAutoLoad: !hasNodeRedCreds && !autoLoadAttempted
                             });
-                            if (!hasNodeRedCreds) {
+                            if (!hasNodeRedCreds && !autoLoadAttempted) {
+                                autoLoadAttempted = true;
                                 console.log('[airplus-account] Auto-loading CLI credentials...');
                                 $('#load-cli-btn').click();
                             }
@@ -97,6 +100,7 @@
                             RED.notify('Credentials loaded from CLI', 'success');
                             node.credentials = node.credentials || {};
                             node.credentials.userId = data.userId;
+                            node.credentials.refreshToken = '***loaded***'; // Placeholder (real token stored server-side)
                             node.credentials.expiresAt = String(data.expiresAt);
                             updateAuthStatus();
                         }
@@ -160,6 +164,7 @@
                                 RED.notify('Credentials imported successfully!', 'success');
                                 node.credentials = node.credentials || {};
                                 node.credentials.userId = result.userId;
+                                node.credentials.refreshToken = '***loaded***'; // Placeholder (real token stored server-side)
                                 node.credentials.expiresAt = String(result.expiresAt);
                                 updateAuthStatus();
                                 $('#import-json-section').hide();
@@ -344,6 +349,7 @@
                             RED.notify('Authentication successful!', 'success');
                             node.credentials = node.credentials || {};
                             node.credentials.userId = data.userId;
+                            node.credentials.refreshToken = '***loaded***'; // Placeholder (real token stored server-side)
                             node.credentials.expiresAt = String(data.expiresAt);
                             updateAuthStatus();
                             $('#auth-url-display').hide();
