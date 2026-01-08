@@ -98,7 +98,7 @@ module.exports = function (RED) {
 
         // Listen to connection events for this specific device
         const onConnected = (connectedDeviceId) => {
-            if (connectedDeviceId === deviceId && !accountNode.isConnected()) {
+            if (connectedDeviceId === deviceId) {
                 // Device just connected - subscribe to updates
                 subscribe();
             }
