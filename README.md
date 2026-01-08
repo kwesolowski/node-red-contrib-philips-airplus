@@ -126,9 +126,7 @@ The package includes a CLI tool for authenticating outside of Node-RED:
 npm run auth
 ```
 
-This tool works in two modes:
-- **Manual**: Opens browser, you paste the redirect URL
-- **Headless** (requires Playwright): Fully automated
+**Note:** The headless Playwright approach is recommended as the manual method's reliability depends on browser behavior.
 
 To install Playwright for headless auth:
 
