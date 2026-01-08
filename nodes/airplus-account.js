@@ -518,6 +518,48 @@ module.exports = function (RED) {
         res.json(devices.map((d) => ({ id: d.id, name: d.name, model: d.model })));
     });
 
+    // Export credentials as JSON (for transfer to another instance)
+    RED.httpAdmin.get('/philips-airplus/export-credentials', function (req, res) {
+        try {
+            if (fs.existsSync(CREDENTIALS_FILE)) {
+                const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
+                res.json({ credentials: data });
+            } else {
+                res.json({ credentials: null });
+            }
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Clear credentials (for transfer - after exporting)
+    RED.httpAdmin.post('/philips-airplus/clear-credentials', function (req, res) {
+        const nodeId = req.body.node;
+        RED.log.info(`[airplus] Clearing credentials for node ${nodeId}`);
+
+        try {
+            // Delete CLI file
+            if (fs.existsSync(CREDENTIALS_FILE)) {
+                fs.unlinkSync(CREDENTIALS_FILE);
+                RED.log.info(`[airplus] Deleted ${CREDENTIALS_FILE}`);
+            }
+
+            // Clear Node-RED credentials
+            if (nodeId) {
+                RED.nodes.addCredentials(nodeId, {});
+                const node = RED.nodes.getNode(nodeId);
+                if (node) {
+                    node.credentials = {};
+                }
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            RED.log.error(`[airplus] Clear failed: ${err.message}`);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Check if CLI credentials file exists
     RED.httpAdmin.get('/philips-airplus/cli-credentials', function (req, res) {
         RED.log.debug(`[airplus] Checking CLI credentials at ${CREDENTIALS_FILE}`);

@@ -290,6 +290,80 @@
                 showSetupSection();
             });
 
+            // Export for transfer - with file download
+            var exportedCredentials = null;
+
+            function downloadCredentials() {
+                if (!exportedCredentials) return;
+                var json = JSON.stringify(exportedCredentials, null, 2);
+                var blob = new Blob([json], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'philips-airplus-credentials.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            $('#auth-export').on('click', function() {
+                $.ajax({
+                    url: 'philips-airplus/export-credentials',
+                    type: 'GET',
+                    success: function(data) {
+                        if (data.credentials) {
+                            exportedCredentials = data.credentials;
+                            downloadCredentials();
+                            $('#export-status').html('Credentials exported. Import on target Node-RED, then clear here.');
+                            $('#export-section').show();
+                        } else {
+                            RED.notify('No credentials to export', 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Export failed: ' + error, 'error');
+                    }
+                });
+            });
+
+            $('#export-download-btn').on('click', function() {
+                if (exportedCredentials) {
+                    downloadCredentials();
+                } else {
+                    RED.notify('No credentials cached. Click Export again.', 'warning');
+                }
+            });
+
+            $('#export-clear-btn').on('click', function() {
+                if (!confirm('Clear local credentials? Make sure you imported on target first!')) {
+                    return;
+                }
+                $.ajax({
+                    url: 'philips-airplus/clear-credentials',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ node: node.id }),
+                    success: function(data) {
+                        RED.notify('Credentials cleared', 'success');
+                        exportedCredentials = null;
+                        node.credentials = {};
+                        updateAuthStatus();
+                        $('#export-section').hide();
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Clear failed: ' + error, 'error');
+                    }
+                });
+            });
+
+            $('#export-close-btn').on('click', function() {
+                exportedCredentials = null;
+                $('#export-section').hide();
+            });
+
             updateAuthStatus();
         }
     });
@@ -314,6 +388,24 @@
 
     <div id="auth-section-authenticated" style="display: none; margin-left: 100px; margin-bottom: 20px;">
         <button type="button" id="auth-reauth" class="red-ui-button">Re-authenticate</button>
+        <button type="button" id="auth-export" class="red-ui-button" style="margin-left: 10px;">
+            <i class="fa fa-download"></i> Export for Transfer
+        </button>
+    </div>
+
+    <div id="export-section" style="display: none; margin-left: 100px; margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+        <p id="export-status" style="font-size: 12px; color: #666; margin-bottom: 10px;"></p>
+        <div style="margin-top: 10px;">
+            <button type="button" id="export-download-btn" class="red-ui-button red-ui-button-primary">
+                <i class="fa fa-download"></i> Download Again
+            </button>
+            <button type="button" id="export-clear-btn" class="red-ui-button" style="margin-left: 10px; background: #e74c3c; color: white;">
+                <i class="fa fa-trash"></i> Clear Local Credentials
+            </button>
+            <button type="button" id="export-close-btn" class="red-ui-button" style="margin-left: 10px;">
+                Close
+            </button>
+        </div>
     </div>
 
     <div id="auth-section-setup" style="margin-left: 100px;">
