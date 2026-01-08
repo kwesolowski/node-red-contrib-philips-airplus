@@ -541,6 +541,69 @@ module.exports = function (RED) {
         }
     });
 
+    // Import credentials from JSON (for cross-machine transfer)
+    RED.httpAdmin.post('/philips-airplus/import-credentials', function (req, res) {
+        const nodeId = req.body.node;
+        const data = req.body.credentials;
+
+        RED.log.info(`[airplus] Importing credentials for node ${nodeId}`);
+
+        if (!nodeId) {
+            return res.status(400).json({ error: 'Missing node ID' });
+        }
+
+        if (!data || !data.user_id || !data.refresh_token) {
+            return res.status(400).json({ error: 'Invalid credentials: missing user_id or refresh_token' });
+        }
+
+        try {
+            // Write to CLI file (single source of truth)
+            const dir = path.dirname(CREDENTIALS_FILE);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+            }
+            fs.writeFileSync(
+                CREDENTIALS_FILE,
+                JSON.stringify(
+                    {
+                        user_id: data.user_id,
+                        refresh_token: data.refresh_token,
+                        access_token: data.access_token || null,
+                        expires_at: data.expires_at || 0,
+                        saved_at: new Date().toISOString(),
+                    },
+                    null,
+                    2
+                ),
+                { mode: 0o600 }
+            );
+            RED.log.info(`[airplus] Credentials written to ${CREDENTIALS_FILE}`);
+
+            // Update Node-RED credentials
+            const credentials = {
+                userId: data.user_id,
+                refreshToken: data.refresh_token,
+                expiresAt: String(data.expires_at || 0),
+            };
+            RED.nodes.addCredentials(nodeId, credentials);
+
+            // Update runtime node if it exists
+            const node = RED.nodes.getNode(nodeId);
+            if (node) {
+                node.credentials = credentials;
+            }
+
+            res.json({
+                success: true,
+                userId: data.user_id,
+                expiresAt: data.expires_at,
+            });
+        } catch (err) {
+            RED.log.error(`[airplus] Import failed: ${err.message}`);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Load credentials from CLI file into node
     RED.httpAdmin.post('/philips-airplus/load-cli-credentials', function (req, res) {
         const nodeId = req.body.node;

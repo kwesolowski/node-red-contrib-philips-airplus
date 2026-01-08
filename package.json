@@ -23,6 +23,9 @@
     "cockatiel": "^3.2.1",
     "mqtt": "^5.10.0",
     "openid-client": "^5.7.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "optionalDependencies": {
     "playwright": "^1.57.0"
   },
   "devDependencies": {

@@ -103,14 +103,103 @@
                 checkCliCredentials();
             });
 
+            // Toggle import JSON section
+            $('#show-import-json').on('click', function() {
+                $('#import-json-section').toggle();
+            });
+
+            // Import JSON credentials
+            $('#import-json-btn').on('click', function() {
+                var jsonText = $('#import-json-input').val().trim();
+                if (!jsonText) {
+                    RED.notify('Please paste JSON credentials', 'error');
+                    return;
+                }
+
+                var data;
+                try {
+                    data = JSON.parse(jsonText);
+                } catch (e) {
+                    RED.notify('Invalid JSON: ' + e.message, 'error');
+                    return;
+                }
+
+                if (!data.user_id || !data.refresh_token) {
+                    RED.notify('JSON must contain user_id and refresh_token', 'error');
+                    return;
+                }
+
+                $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
+
+                $.ajax({
+                    url: 'philips-airplus/import-credentials',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ node: node.id, credentials: data }),
+                    success: function(result) {
+                        if (result.success) {
+                            RED.notify('Credentials imported successfully!', 'success');
+                            node.credentials = node.credentials || {};
+                            node.credentials.userId = result.userId;
+                            node.credentials.expiresAt = String(result.expiresAt);
+                            updateAuthStatus();
+                            $('#import-json-input').val('');
+                            $('#import-json-section').hide();
+                        }
+                        $('#import-json-btn').prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                    },
+                    error: function(xhr) {
+                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+                        RED.notify('Import failed: ' + error, 'error');
+                        $('#import-json-btn').prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                    }
+                });
+            });
+
             // Toggle manual auth section
             $('#show-manual-auth').on('click', function() {
                 $('#manual-auth-section').toggle();
             });
 
-            // Manual OAuth flow (fallback)
+            // Manual OAuth flow with popup window
+            var authPopup = null;
+            var popupPollInterval = null;
+
+            function stopPopupPolling() {
+                if (popupPollInterval) {
+                    clearInterval(popupPollInterval);
+                    popupPollInterval = null;
+                }
+            }
+
+            function startPopupPolling() {
+                stopPopupPolling();
+                popupPollInterval = setInterval(function() {
+                    if (!authPopup || authPopup.closed) {
+                        stopPopupPolling();
+                        return;
+                    }
+
+                    try {
+                        // Try to read popup URL - may work after redirect to custom scheme
+                        var url = authPopup.location.href;
+                        if (url && url.startsWith('com.philips.air://')) {
+                            // Got the redirect URL!
+                            stopPopupPolling();
+                            authPopup.close();
+                            $('#auth-redirect-input').val(url);
+                            RED.notify('Captured redirect URL!', 'success');
+                            // Auto-submit
+                            $('#auth-exchange').click();
+                        }
+                    } catch (e) {
+                        // Cross-origin error - expected while on login page
+                    }
+                }, 500);
+            }
+
             $('#auth-get-url').on('click', function() {
-                $(this).prop('disabled', true).text('Getting URL...');
+                $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Opening...');
 
                 $.ajax({
                     url: 'philips-airplus/auth/start',
@@ -118,15 +207,31 @@
                     contentType: 'application/json',
                     data: JSON.stringify({ node: node.id }),
                     success: function(data) {
-                        $('#auth-url-display').val(data.url).show();
-                        $('#auth-url-copy').show();
+                        // Open popup window for login
+                        authPopup = window.open(
+                            data.url,
+                            'philips-auth',
+                            'width=500,height=700,scrollbars=yes,resizable=yes'
+                        );
+
+                        if (!authPopup || authPopup.closed) {
+                            // Popup blocked - fallback to showing URL
+                            $('#auth-url-display').val(data.url);
+                            $('#auth-url-fallback').show();
+                            RED.notify('Popup blocked. Copy URL and open in new tab.', 'warning');
+                        } else {
+                            // Start polling for redirect
+                            startPopupPolling();
+                            RED.notify('Login window opened. Complete login, then copy redirect URL.', 'info');
+                        }
+
                         $('#auth-step2').show();
-                        $('#auth-get-url').prop('disabled', false).text('1. Get Auth URL');
+                        $('#auth-get-url').prop('disabled', false).html('<i class="fa fa-external-link"></i> 1. Start Login');
                     },
                     error: function(xhr) {
                         var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-                        RED.notify('Failed to get auth URL: ' + error, 'error');
-                        $('#auth-get-url').prop('disabled', false).text('1. Get Auth URL');
+                        RED.notify('Failed to start auth: ' + error, 'error');
+                        $('#auth-get-url').prop('disabled', false).html('<i class="fa fa-external-link"></i> 1. Start Login');
                     }
                 });
             });
@@ -235,43 +340,67 @@
             </div>
         </div>
 
+        <!-- Import JSON credentials -->
+        <div class="form-row" style="margin-top: 10px;">
+            <a href="#" id="show-import-json" style="font-size: 12px; color: #666;">
+                <i class="fa fa-upload"></i> Import credentials JSON
+            </a>
+        </div>
+
+        <div id="import-json-section" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                Paste JSON from <code>philips-airplus-auth --export</code>:
+            </p>
+            <div class="form-row">
+                <textarea id="import-json-input" rows="5" style="width: 100%; font-family: monospace; font-size: 11px;"
+                    placeholder='{"user_id": "...", "refresh_token": "...", ...}'></textarea>
+            </div>
+            <div class="form-row">
+                <button type="button" id="import-json-btn" class="red-ui-button red-ui-button-primary">
+                    <i class="fa fa-upload"></i> Import
+                </button>
+            </div>
+        </div>
+
         <!-- Manual auth (fallback) -->
-        <div class="form-row">
+        <div class="form-row" style="margin-top: 10px;">
             <a href="#" id="show-manual-auth" style="font-size: 12px; color: #666;">
-                Manual authentication (advanced)
+                <i class="fa fa-key"></i> Manual authentication (advanced)
             </a>
         </div>
 
         <div id="manual-auth-section" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
             <div class="form-row" style="margin-bottom: 10px;">
-                <button type="button" id="auth-get-url" class="red-ui-button">1. Get Auth URL</button>
+                <button type="button" id="auth-get-url" class="red-ui-button red-ui-button-primary">
+                    <i class="fa fa-external-link"></i> 1. Start Login
+                </button>
             </div>
 
-            <div class="form-row" style="margin-bottom: 10px;">
-                <input type="text" id="auth-url-display" readonly style="width: 100%; display: none;"
-                       placeholder="Authorization URL will appear here">
-                <button type="button" id="auth-url-copy" class="red-ui-button" style="display: none; margin-top: 5px;">
-                    Copy URL
+            <div class="form-row" style="margin-bottom: 10px; display: none;" id="auth-url-fallback">
+                <input type="text" id="auth-url-display" readonly style="width: 100%;"
+                       placeholder="Authorization URL">
+                <button type="button" id="auth-url-copy" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
+                    <i class="fa fa-copy"></i> Copy URL
                 </button>
             </div>
 
             <div id="auth-step2" style="display: none;">
-                <div class="form-row">
-                    <p style="font-size: 12px; color: #666;">
-                        2. Open the URL in your browser, log in to your Philips account,
-                        then copy the redirect URL (starts with <code>com.philips.air://</code>)
-                        and paste it below:
+                <div class="form-row" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+                    <p style="font-size: 12px; color: #856404; margin: 0;">
+                        <strong>2. After logging in:</strong> The browser will show an error page
+                        (cannot open <code>com.philips.air://</code>). Copy the <strong>entire URL</strong>
+                        from the address bar and paste it below.
                     </p>
                 </div>
 
                 <div class="form-row" style="margin-bottom: 10px;">
                     <input type="text" id="auth-redirect-input" style="width: 100%;"
-                           placeholder="Paste redirect URL here (com.philips.air://loginredirect?code=...)">
+                           placeholder="Paste URL from address bar (com.philips.air://loginredirect?code=...)">
                 </div>
 
                 <div class="form-row">
-                    <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-small">
-                        3. Exchange Code
+                    <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-primary">
+                        <i class="fa fa-check"></i> 3. Complete Login
                     </button>
                 </div>
             </div>
