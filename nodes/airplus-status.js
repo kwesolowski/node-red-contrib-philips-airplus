@@ -106,6 +106,9 @@ module.exports = function (RED) {
 
         accountNode.on('connected', onConnected);
 
+        // Set initial status before checking connection
+        node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
+
         // Wait for account node to be ready
         if (accountNode.isConnected(deviceId)) {
             subscribe();
@@ -145,8 +148,6 @@ module.exports = function (RED) {
             accountNode.removeListener('connected', onConnected);
             done();
         });
-
-        node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
     }
 
     RED.nodes.registerType('airplus-status', AirplusStatusNode);
