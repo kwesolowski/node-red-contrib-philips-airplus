@@ -169,11 +169,11 @@ This package is based on reverse-engineered protocol from the official Philips A
 
 ## Protocol
 
-Based on reverse-engineered Philips Air+ cloud API:
+Based on reverse-engineered Philips Air+ cloud API (v3 protocol):
 
-- OAuth via `cdc.accounts.home.id`
-- REST API at `prod.eu-da.iot.versuni.com`
-- MQTT over WebSocket at `ats.prod.eu-da.iot.versuni.com`
+- OAuth via `cdc.accounts.home.id` (Philips home.id OIDC)
+- REST API at `www.api.air.philips.com` (MxChip/FogCloud)
+- MQTT over WebSocket at AWS IoT Core (`ats.iot.eu-central-1.amazonaws.com`)
 
 ## Development
 
