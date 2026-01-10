@@ -268,12 +268,12 @@ AC3737/10 is listed as model "Carnation":
 
 ```json
 {
-    "model": "Carnation",
-    "name": "AC3737/10",
-    "privacy_url": "https://www.usa.philips.com/a-w/mobile-privacy-notice/clean-home-app.html",
-    "purchase_url": "https://www.philips.com",
-    "support_url": "https://www.philips.com/support",
-    "terms_url": "https://www.home.id/policy/terms-of-service"
+  "model": "Carnation",
+  "name": "AC3737/10",
+  "privacy_url": "https://www.usa.philips.com/a-w/mobile-privacy-notice/clean-home-app.html",
+  "purchase_url": "https://www.philips.com",
+  "support_url": "https://www.philips.com/support",
+  "terms_url": "https://www.home.id/policy/terms-of-service"
 }
 ```
 
@@ -292,15 +292,15 @@ Other model codenames:
 
 ## Authentication Flow
 
-01. User opens app
-02. App generates IDFV (device identifier) - stored as `idfv`
-03. OAuth redirect to `cdc.accounts.home.id`
-04. User logs in via Google/Apple/Email
-05. OAuth callback returns authorization code
-06. App exchanges code for tokens (id_token, access_token)
-07. App derives `ahc:id=<hash>` - appears to be MD5 or similar of IDFV
-08. App calls `/device/serverTime/` to get timestamp
-09. App calls `/enduser/v2/getToken/` with:
+1.  User opens app
+2.  App generates IDFV (device identifier) - stored as `idfv`
+3.  OAuth redirect to `cdc.accounts.home.id`
+4.  User logs in via Google/Apple/Email
+5.  OAuth callback returns authorization code
+6.  App exchanges code for tokens (id_token, access_token)
+7.  App derives `ahc:id=<hash>` - appears to be MD5 or similar of IDFV
+8.  App calls `/device/serverTime/` to get timestamp
+9.  App calls `/enduser/v2/getToken/` with:
     - `username`: `ahc:id=<idfv_hash>`
     - `app_id`: `9fd505fa9c7111e9a1e3061302926720`
     - `timestamp`: Server timestamp (string)
@@ -398,29 +398,29 @@ Device control uses standard AWS IoT Device Shadow topics:
 
 ```json
 {
-    "state": {
-        "desired": {
-            "powerOn": true
-        },
-        "reported": {
-            "powerOn": true,
-            "connected": true,
-            "productState": "running",
-            "productError": null,
-            "ncpFirmwareVersion": "1.0.0",
-            "hostFirmwareVersion": "1.0.4",
-            "locale": "en_US",
-            "timezones": {
-                "posix": "CET-1CEST,M3.5.0,M10.5.0/3",
-                "iana": "Europe/Warsaw"
-            },
-            "subscriptionLevel": 0,
-            "shouldFactoryReset": false,
-            "ota": 0
-        }
+  "state": {
+    "desired": {
+      "powerOn": true
     },
-    "timestamp": 1767673935,
-    "version": 123
+    "reported": {
+      "powerOn": true,
+      "connected": true,
+      "productState": "running",
+      "productError": null,
+      "ncpFirmwareVersion": "1.0.0",
+      "hostFirmwareVersion": "1.0.4",
+      "locale": "en_US",
+      "timezones": {
+        "posix": "CET-1CEST,M3.5.0,M10.5.0/3",
+        "iana": "Europe/Warsaw"
+      },
+      "subscriptionLevel": 0,
+      "shouldFactoryReset": false,
+      "ota": 0
+    }
+  },
+  "timestamp": 1767673935,
+  "version": 123
 }
 ```
 
@@ -430,11 +430,11 @@ Device control uses standard AWS IoT Device Shadow topics:
 
 ```json
 {
-    "state": {
-        "desired": {
-            "powerOn": true
-        }
+  "state": {
+    "desired": {
+      "powerOn": true
     }
+  }
 }
 ```
 
@@ -446,33 +446,33 @@ Full response from `/enduser/deviceList/`:
 
 ```json
 {
-    "meta": {"code": 0, "message": "Get device list by user successful"},
-    "data": [
-        {
-            "enduser_id": "PHILIPS:99957fe6-4ca7-4cf7-91ea-c095d8de91df_9fd505fa9c7111e9a1e3061302926720",
-            "device_id": "99d5086d8f9f11eeb22913de1077e90c",
-            "app_id": "9fd505fa9c7111e9a1e3061302926720",
-            "registration_id": "9FCBD4E4CA237C37C8E2A1C3204E7C73E2CB3D281E1108AB2A0E2BCAF116D767",
-            "is_push": true,
-            "device_info": {
-                "device_alias": "My Device",
-                "binding_time": "2023-11-30T23:33:42.295299+0000",
-                "activate_time": "2023-11-30-16",
-                "product_id": "32681542d91811eda99406d016384e4a",
-                "mac": "849DC2BFEEC6",
-                "modelid": "AC3737/10",
-                "name": "Bedroom",
-                "record_time": "2023-11-30-16",
-                "type": "Carnation",
-                "is_online": true,
-                "service_region": "eu-central-1",
-                "activate_ip": "89.73.44.56",
-                "device_id": "99d5086d8f9f11eeb22913de1077e90c",
-                "swversion": "1.0.4",
-                "isAISetup": 0
-            }
-        }
-    ]
+  "meta": { "code": 0, "message": "Get device list by user successful" },
+  "data": [
+    {
+      "enduser_id": "PHILIPS:99957fe6-4ca7-4cf7-91ea-c095d8de91df_9fd505fa9c7111e9a1e3061302926720",
+      "device_id": "99d5086d8f9f11eeb22913de1077e90c",
+      "app_id": "9fd505fa9c7111e9a1e3061302926720",
+      "registration_id": "9FCBD4E4CA237C37C8E2A1C3204E7C73E2CB3D281E1108AB2A0E2BCAF116D767",
+      "is_push": true,
+      "device_info": {
+        "device_alias": "My Device",
+        "binding_time": "2023-11-30T23:33:42.295299+0000",
+        "activate_time": "2023-11-30-16",
+        "product_id": "32681542d91811eda99406d016384e4a",
+        "mac": "849DC2BFEEC6",
+        "modelid": "AC3737/10",
+        "name": "Bedroom",
+        "record_time": "2023-11-30-16",
+        "type": "Carnation",
+        "is_online": true,
+        "service_region": "eu-central-1",
+        "activate_ip": "89.73.44.56",
+        "device_id": "99d5086d8f9f11eeb22913de1077e90c",
+        "swversion": "1.0.4",
+        "isAISetup": 0
+      }
+    }
+  ]
 }
 ```
 

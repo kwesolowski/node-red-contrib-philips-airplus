@@ -1,0 +1,21 @@
+repos:
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npx eslint --fix
+        language: system
+        files: \.js$
+        pass_filenames: true
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write
+        language: system
+        files: \.(js|json|md)$
+        pass_filenames: true
+      - id: jest
+        name: jest
+        entry: npm test
+        language: system
+        pass_filenames: false
+        types: [javascript]

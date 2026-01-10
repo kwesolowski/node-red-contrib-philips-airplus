@@ -54,13 +54,13 @@ Receives real-time status updates from a device.
 
 ```javascript
 msg.payload = {
-    power: true,           // on/off
-    mode: 'auto',          // auto, sleep, turbo, manual
-    fanSpeed: 8,           // 1-18
-    pm25: 12,              // ug/m3
-    humidity: 45,          // %
-    temperature: 22,       // celsius
-    timestamp: 1704067200000
+  power: true, // on/off
+  mode: 'auto', // auto, sleep, turbo, manual
+  fanSpeed: 8, // 1-18
+  pm25: 12, // ug/m3
+  humidity: 45, // %
+  temperature: 22, // celsius
+  timestamp: 1704067200000,
 };
 msg.deviceId = 'da-xxx';
 msg.deviceName = 'Living Room';
@@ -77,29 +77,29 @@ Sends control commands to a device.
 ```javascript
 // Change any combination of properties:
 msg.payload = {
-    power: true,           // on/off (optional)
-    mode: 'auto',          // auto, sleep, turbo, manual (optional)
-    fanSpeed: 1,           // 1-2 manual speed (optional, AC3737 has 2 speeds)
-    targetHumidity: 50,    // 40-70, humidifiers only (optional)
-    childLock: false,      // boolean (optional)
-    displayLight: 50       // 0-100: 0=off, 50=dim, 100=bright (optional)
+  power: true, // on/off (optional)
+  mode: 'auto', // auto, sleep, turbo, manual (optional)
+  fanSpeed: 1, // 1-2 manual speed (optional, AC3737 has 2 speeds)
+  targetHumidity: 50, // 40-70, humidifiers only (optional)
+  childLock: false, // boolean (optional)
+  displayLight: 50, // 0-100: 0=off, 50=dim, 100=bright (optional)
 };
 ```
 
 **Partial update examples:**
 
 ```javascript
-msg.payload = { power: true };              // Just turn on, keep mode
-msg.payload = { mode: 'sleep' };            // Just change mode
+msg.payload = { power: true }; // Just turn on, keep mode
+msg.payload = { mode: 'sleep' }; // Just change mode
 msg.payload = { power: true, mode: 'auto' }; // Turn on in auto mode
-msg.payload = { fanSpeed: 12 };             // Just adjust fan speed
+msg.payload = { fanSpeed: 12 }; // Just adjust fan speed
 ```
 
 **Refresh command:**
 
 ```javascript
 msg.topic = 'refresh';
-msg.payload = {};  // ignored
+msg.payload = {}; // ignored
 ```
 
 **Outputs:**
@@ -185,6 +185,12 @@ npm install
 # Run tests
 npm test
 ```
+
+### Code Style
+
+This project uses ESLint, Prettier, and Jest. Pre-commit hooks enforce code quality automatically after running `pre-commit install`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup.
 
 ## Credits
 
