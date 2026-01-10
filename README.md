@@ -162,6 +162,7 @@ See [`examples/control-test.json`](examples/control-test.json) for a complete te
 This package is based on reverse-engineered protocol from the official Philips Air+ Android app. It is **not affiliated with or endorsed by Philips**.
 
 **Compatibility:**
+
 - Supports v3 protocol devices (AC3737/Carnation, Apollo series)
 - V1/V2 devices are not compatible
 
