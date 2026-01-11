@@ -28,8 +28,13 @@ module.exports = function (RED) {
       return;
     }
 
+    // Track last known status for display when disconnected
+    let lastStatus = null;
+
     // Status callback
     function onStatusUpdate(status, type) {
+      lastStatus = status;
+
       const msg = {
         payload: status,
         deviceId: deviceId,
@@ -104,7 +109,19 @@ module.exports = function (RED) {
       }
     };
 
+    const onDisconnected = disconnectedDeviceId => {
+      if (disconnectedDeviceId === deviceId) {
+        // Device disconnected - update status to show stale data
+        if (lastStatus) {
+          updateNodeStatus(lastStatus);
+        } else {
+          node.status({ fill: 'yellow', shape: 'ring', text: 'disconnected' });
+        }
+      }
+    };
+
     accountNode.on('connected', onConnected);
+    accountNode.on('disconnected', onDisconnected);
 
     // Set initial status before checking connection
     node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
@@ -146,6 +163,7 @@ module.exports = function (RED) {
     node.on('close', function (done) {
       accountNode.unsubscribe(deviceId, onStatusUpdate);
       accountNode.removeListener('connected', onConnected);
+      accountNode.removeListener('disconnected', onDisconnected);
       done();
     });
   }
