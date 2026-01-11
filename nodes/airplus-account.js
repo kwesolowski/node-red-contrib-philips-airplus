@@ -15,7 +15,6 @@ const {
   exchangeCode,
   refreshTokens,
   extractUserId,
-  isTokenExpired,
 } = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');

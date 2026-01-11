@@ -28,7 +28,7 @@ class MockClient {
     return url.toString();
   }
 
-  async callback(redirectUri, params, checks) {
+  async callback(_redirectUri, _params, _checks) {
     // Mock token exchange
     return {
       access_token: 'mock-access-token',
@@ -38,7 +38,7 @@ class MockClient {
     };
   }
 
-  async refresh(refreshToken) {
+  async refresh(_refreshToken) {
     return {
       access_token: 'mock-refreshed-token',
       refresh_token: 'mock-new-refresh-token',

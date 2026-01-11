@@ -14,7 +14,7 @@ class MockMqttClient extends EventEmitter {
     this.ended = false;
   }
 
-  subscribe(topic, opts) {
+  subscribe(topic, _opts) {
     this.subscriptions.push(topic);
   }
 
@@ -26,7 +26,7 @@ class MockMqttClient extends EventEmitter {
     this.published.push({ topic, payload, opts });
   }
 
-  end(force) {
+  end(_force) {
     this.ended = true;
     this.emit('close');
   }
