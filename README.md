@@ -186,6 +186,17 @@ npm install
 npm test
 ```
 
+### Test Coverage
+
+The test suite includes comprehensive coverage for MQTT reconnection logic:
+
+- **Automatic reconnection** with exponential backoff after unexpected disconnects
+- **Token refresh** during reconnection (presigned WebSocket URLs expire after ~1 hour)
+- **Per-device connection state** tracking for multi-device accounts
+- **Connection timeout** handling and recovery
+
+These tests ensure reliable operation when devices lose connectivity or credentials expire.
+
 ### Code Style
 
 This project uses ESLint, Prettier, and Jest. Pre-commit hooks enforce code quality automatically after running `pre-commit install`.
