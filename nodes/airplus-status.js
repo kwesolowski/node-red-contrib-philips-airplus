@@ -136,22 +136,8 @@ module.exports = function (RED) {
     // Handle manual trigger input
     node.on('input', async function (msg, send, done) {
       try {
-        // Request fresh state from device shadow via MQTT
-        const shadowDoc = await accountNode.getDeviceState(deviceId);
-        const status = shadowDoc?.state?.reported;
-
-        if (status) {
-          send({
-            payload: status,
-            deviceId: deviceId,
-            deviceName: deviceName,
-            topic: `${deviceId}/status`,
-            updateType: 'manual',
-          });
-          updateNodeStatus(status);
-        } else {
-          node.warn('No reported state in shadow document');
-        }
+        // Trigger shadow GET - subscription callback will emit when response arrives
+        await accountNode.getDeviceState(deviceId);
         if (done) done();
       } catch (err) {
         node.error(`Failed to get device state: ${err.message}`);

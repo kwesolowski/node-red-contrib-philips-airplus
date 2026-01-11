@@ -71,7 +71,7 @@ The `payload` object contains parsed sensor fields:
 
 ## Update Types
 
-airplus-status emits different `updateType` values:
+airplus-status emits different `updateType` values based on AWS IoT shadow events:
 
 ### 1. `"reported"` - Shadow State Push
 
@@ -96,46 +96,17 @@ Emitted immediately when airplus-status subscribes to device shadow.
 **Payload**: ❌ **Often has undefined fields** if shadow hasn't been updated recently
 **Note**: airplus-influx-logger filters this out (skips logging)
 
-### 4. `"manual"` - User-Triggered Shadow Get
+## Manual Trigger (Inject Button)
 
-Emitted when inject node triggers `msg` input to airplus-status.
+When you inject a message to airplus-status:
 
-**When**: Manual trigger via inject/debug
-**Payload**: ⚠️ **May lack sensor fields** if device hasn't pushed recently
-**Behavior**: Requests current shadow via `getDeviceState()`, returns whatever is cached in AWS IoT
+1. Triggers AWS IoT shadow GET request via `getDeviceState()`
+2. Shadow response arrives via MQTT subscription
+3. **Emits "reported" message** via subscription callback (same code path as automatic updates)
 
-## Why Manual Inject Shows Empty Sensors
+**Result**: No separate "manual" updateType - inject just forces a refresh, data arrives via normal subscription.
 
-When you inject a message to trigger airplus-status, it calls `getDeviceState()` which:
-
-1. Publishes to `$aws/things/{deviceId}/shadow/get` (request current shadow)
-2. Receives response from `$aws/things/{deviceId}/shadow/get/accepted`
-3. Returns whatever is in the **shadow cache**
-
-If the device hasn't pushed a sensor update recently, the shadow cache won't have `D03221`, `D03125`, `D03224` fields, resulting in:
-
-```javascript
-{
-  payload: {
-    temperature: undefined,
-    humidity: undefined,
-    pm25: undefined
-  },
-  updateType: "manual"
-}
-```
-
-This is why airplus-influx-logger warns: **"No environmental metrics in payload"**
-
-## Solution: Wait for Device Updates
-
-To get sensor data in InfluxDB:
-
-1. **Don't rely on manual inject** - it returns stale shadow
-2. **Wait for automatic 'reported' updates** - device pushes these periodically
-3. **Check InfluxDB after a few minutes** - data appears when device sends update
-
-The AC3737 firmware pushes sensor updates at **unknown intervals** (needs observation to determine exact timing).
+**Behavior**: All emissions go through the same parsing code, ensuring consistent format.
 
 ## Filtering Strategy
 
@@ -143,8 +114,8 @@ airplus-influx-logger only processes messages with sensor data:
 
 ```typescript
 const updateType = msg.updateType || 'unknown';
-if (updateType !== 'reported' && updateType !== 'delta' && updateType !== 'manual') {
-    // Skip 'initial' and other types without sensor data
+if (updateType !== 'reported' && updateType !== 'delta') {
+    // Skip 'initial' without sensor data
     return;
 }
 
@@ -154,7 +125,7 @@ if (!msg.payload.temperature && !msg.payload.humidity && !msg.payload.pm25) {
 }
 ```
 
-This prevents duplicate/empty messages from cluttering InfluxDB.
+This prevents empty messages from cluttering InfluxDB.
 
 ## Verification
 
