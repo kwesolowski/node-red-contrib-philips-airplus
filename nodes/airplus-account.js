@@ -55,6 +55,7 @@ module.exports = function (RED) {
     let deviceCache = [];
     let deviceStatus = new Map(); // deviceId -> status
     let statusCallbacks = new Map(); // deviceId -> Set of callbacks
+    let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
 
     // Get API client singleton
     function getApiClient() {
@@ -200,18 +201,49 @@ module.exports = function (RED) {
           onStateChange: handleStateChange,
           onConnect: () => {
             node.log(`MQTT connected: ${deviceName}`);
+            reconnectionState = null; // Clear reconnection state on success
             updateStatus();
             // Emit event for this device's connection
             node.emit('connected', deviceId);
           },
           onDisconnect: () => {
-            node.warn(`MQTT disconnected: ${deviceName}`);
+            node.warn(`MQTT disconnected: ${deviceName} (will auto-reconnect)`);
             updateStatus();
             // Emit event for this device's disconnection
             node.emit('disconnected', deviceId);
           },
-          onError: err => {
-            node.error(`MQTT error (${deviceName}): ${err.message}`);
+          onError: (err, context) => {
+            // Context: { recoverable, attempts, circuitBreakerOpen, failureDuration, lastConnectedAt }
+            if (context?.recoverable) {
+              // Transient error - will retry automatically
+              const failureDuration = context.failureDuration || 0;
+              const lastConnectedAgo = context.lastConnectedAt
+                ? Math.round((Date.now() - context.lastConnectedAt) / 1000)
+                : null;
+
+              let message = `MQTT ${deviceName}: ${err.message}`;
+              message += ` (attempt ${context.attempts || 1}/10)`;
+              if (failureDuration > 0) {
+                message += `, failing for ${failureDuration}s`;
+              }
+              if (lastConnectedAgo !== null) {
+                message += `, last connected ${lastConnectedAgo}s ago`;
+              }
+              message += ' - auto-retry enabled';
+
+              node.warn(message);
+
+              reconnectionState = {
+                attempts: context.attempts || 1,
+                nextRetryAt: context.nextRetryAt || Date.now() + 1000,
+                circuitBreakerOpen: context.circuitBreakerOpen || false,
+              };
+              updateStatus();
+            } else {
+              // Permanent error - user action required
+              node.error(`MQTT ${deviceName}: ${err.message} - manual intervention required`);
+              updateStatus();
+            }
           },
           log: msg => node.log(msg),
           verboseLogging: config.verboseLogging || false,
@@ -224,7 +256,10 @@ module.exports = function (RED) {
           mqttClient.subscribeDevice(deviceId);
           node.log(`MQTT connected and subscribed: ${deviceName}`);
         } catch (err) {
-          node.error(`MQTT connection failed for ${deviceName}: ${err.message}`);
+          // Initial connection failed - will auto-retry via onError callback
+          node.warn(
+            `MQTT initial connection failed for ${deviceName}: ${err.message} (auto-retry enabled)`
+          );
         }
       }
 
@@ -261,20 +296,62 @@ module.exports = function (RED) {
 
     function updateStatus() {
       if (!isAuthenticated()) {
-        node.status({ fill: 'grey', shape: 'ring', text: 'not authenticated' });
-      } else {
-        const connectedCount = Array.from(mqttClients.values()).filter(c => c.isConnected()).length;
-        if (connectedCount > 0) {
+        node.status({ fill: 'red', shape: 'ring', text: 'authentication required' });
+        return;
+      }
+
+      const connectedCount = Array.from(mqttClients.values()).filter(c => c.isConnected()).length;
+      const totalDevices = mqttClients.size;
+
+      // Connected - all good
+      if (connectedCount > 0 && connectedCount === totalDevices) {
+        node.status({
+          fill: 'green',
+          shape: 'dot',
+          text: `connected (${connectedCount} device${connectedCount > 1 ? 's' : ''})`,
+        });
+        return;
+      }
+
+      // Partially connected
+      if (connectedCount > 0 && connectedCount < totalDevices) {
+        const disconnected = totalDevices - connectedCount;
+        node.status({
+          fill: 'yellow',
+          shape: 'dot',
+          text: `${connectedCount} ok, ${disconnected} reconnecting`,
+        });
+        return;
+      }
+
+      // Reconnecting with state
+      if (reconnectionState) {
+        const { attempts, nextRetryAt, circuitBreakerOpen } = reconnectionState;
+
+        if (circuitBreakerOpen) {
+          const retryIn = Math.ceil((nextRetryAt - Date.now()) / 1000 / 60);
           node.status({
-            fill: 'green',
+            fill: 'orange',
             shape: 'dot',
-            text: `connected (${connectedCount} devices)`,
+            text: `backing off (retry in ${retryIn}m)`,
           });
-        } else if (mqttClients.size > 0) {
-          node.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
-        } else {
-          node.status({ fill: 'yellow', shape: 'ring', text: 'disconnected' });
+          return;
         }
+
+        const maxAttempts = 10; // Match circuit breaker threshold
+        node.status({
+          fill: 'yellow',
+          shape: 'ring',
+          text: `connecting... (${attempts}/${maxAttempts})`,
+        });
+        return;
+      }
+
+      // Initial connection
+      if (totalDevices > 0) {
+        node.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' });
+      } else {
+        node.status({ fill: 'grey', shape: 'ring', text: 'no devices' });
       }
     }
 

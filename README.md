@@ -148,14 +148,28 @@ See [`examples/control-test.json`](examples/control-test.json) for a complete te
 
 ### MQTT connection issues
 
-- Verify device is online in Philips app
-- Check credentials haven't expired (re-authenticate if needed)
-- Account node shows connection status for each device
+**Automatic recovery:** The nodes automatically reconnect with exponential backoff after network glitches, credential expiry, or AWS IoT maintenance. Check the node status indicator:
 
-### Node shows "disconnected"
+- **Yellow ring "connecting... (2/10)"** - Automatic reconnection in progress
+- **Orange dot "backing off (retry in 3m)"** - Circuit breaker active (10 consecutive failures), will retry automatically
+- **Green dot** - Connected and operating normally
 
-- Account config may need re-authentication
-- Click "Clear Credentials" and authenticate again
+**When to intervene:**
+- **Red ring "authentication required"** - OAuth refresh token expired, re-authenticate using "Get Auth URL" in config node
+- **Failing for >15 minutes** - Check internet connectivity, Philips cloud status, or device online status in Philips app
+
+**Logs include temporal context:**
+- Time since first failure
+- Time since last successful connection
+- Reconnection attempt number
+- Auto-retry status
+
+Example warning (auto-recoverable):
+```
+MQTT Bedroom: MQTT connection timeout (attempt 3/10), failing for 45s, last connected 120s ago - auto-retry enabled
+```
+
+Only errors requiring manual intervention are logged as errors.
 
 ## Disclaimer
 
