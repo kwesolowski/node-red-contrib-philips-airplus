@@ -4,7 +4,13 @@
  * These tests focus on pure functions that don't need network.
  */
 
-const { generatePkce, parseRedirectUrl, extractUserId, isTokenExpired } = require('../lib/oauth');
+const {
+  generatePkce,
+  parseRedirectUrl,
+  extractUserId,
+  isTokenExpired,
+  isTokenRevoked,
+} = require('../lib/oauth');
 
 describe('oauth', () => {
   describe('generatePkce', () => {
@@ -127,6 +133,29 @@ describe('oauth', () => {
 
     it('returns false if expires_at not set', () => {
       expect(isTokenExpired({})).toBe(false);
+    });
+  });
+
+  describe('isTokenRevoked', () => {
+    it('returns true for OPError with invalid_grant', () => {
+      const err = new Error('invalid_grant');
+      err.error = 'invalid_grant';
+      expect(isTokenRevoked(err)).toBe(true);
+    });
+
+    it('returns false for other OPError types', () => {
+      const err = new Error('server_error');
+      err.error = 'server_error';
+      expect(isTokenRevoked(err)).toBe(false);
+    });
+
+    it('returns false for generic errors', () => {
+      expect(isTokenRevoked(new Error('network timeout'))).toBe(false);
+    });
+
+    it('returns false for null/undefined', () => {
+      expect(isTokenRevoked(null)).toBe(false);
+      expect(isTokenRevoked(undefined)).toBe(false);
     });
   });
 });

@@ -12,9 +12,20 @@ const generators = {
   nonce: () => crypto.randomBytes(16).toString('base64url'),
 };
 
+// Configurable error for refresh() - set via MockClient.refreshError
+let refreshError = null;
+
 class MockClient {
   constructor(config) {
     this.config = config;
+  }
+
+  static setRefreshError(err) {
+    refreshError = err;
+  }
+
+  static clearRefreshError() {
+    refreshError = null;
   }
 
   authorizationUrl(params) {
@@ -39,6 +50,9 @@ class MockClient {
   }
 
   async refresh(_refreshToken) {
+    if (refreshError) {
+      throw refreshError;
+    }
     return {
       access_token: 'mock-refreshed-token',
       refresh_token: 'mock-new-refresh-token',
@@ -69,4 +83,5 @@ class Issuer {
 module.exports = {
   Issuer,
   generators,
+  MockClient,
 };

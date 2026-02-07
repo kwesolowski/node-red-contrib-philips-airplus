@@ -15,6 +15,7 @@ const {
   exchangeCode,
   refreshTokens,
   extractUserId,
+  isTokenRevoked,
 } = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
@@ -56,6 +57,7 @@ module.exports = function (RED) {
     let deviceStatus = new Map(); // deviceId -> status
     let statusCallbacks = new Map(); // deviceId -> Set of callbacks
     let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
+    let tokenRevoked = false;
 
     // Get API client singleton
     function getApiClient() {
@@ -98,7 +100,17 @@ module.exports = function (RED) {
           updateCredentials(tokenSet);
           node.log('Token refreshed successfully');
         } catch (err) {
-          node.error(`Token refresh failed: ${err.message}`);
+          if (isTokenRevoked(err)) {
+            node.error(
+              'Token revoked. Re-authenticate: run airplus-auth CLI, then click "Load from CLI" in config.'
+            );
+            tokenRevoked = true;
+            node.credentials = {};
+            RED.nodes.addCredentials(node.id, {});
+            updateStatus();
+          } else {
+            node.error(`Token refresh failed: ${err.message}`);
+          }
           throw err;
         }
       }
@@ -295,6 +307,11 @@ module.exports = function (RED) {
     }
 
     function updateStatus() {
+      if (tokenRevoked) {
+        node.status({ fill: 'red', shape: 'ring', text: 'token revoked - re-authenticate' });
+        return;
+      }
+
       if (!isAuthenticated()) {
         node.status({ fill: 'red', shape: 'ring', text: 'authentication required' });
         return;

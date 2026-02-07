@@ -107,7 +107,7 @@ Verify automatic recovery:
 - [x] Exponential backoff reconnection (1s → 5min)
 - [x] Automatic credential refresh (50min timer)
 - [x] Circuit breaker (10 failures → 5min backoff)
-- [ ] Distinguish transient vs permanent errors in logging
+- [x] Distinguish transient vs permanent errors in logging
 - [ ] Rich node status with retry countdown
 - [ ] OAuth token refresh (when refresh_token still valid)
 - [ ] Metrics emission (optional, for Grafana)
