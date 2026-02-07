@@ -65,10 +65,8 @@ class MockClient {
 class Issuer {
   constructor(metadata) {
     this.metadata = metadata;
-  }
-
-  Client(config) {
-    return new MockClient(config);
+    // Real openid-client exposes Client as a constructable class property
+    this.Client = MockClient;
   }
 
   static async discover(issuerUrl) {

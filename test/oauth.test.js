@@ -10,7 +10,9 @@ const {
   extractUserId,
   isTokenExpired,
   isTokenRevoked,
+  refreshTokens,
 } = require('../lib/oauth');
+const { MockClient } = require('openid-client');
 
 describe('oauth', () => {
   describe('generatePkce', () => {
@@ -156,6 +158,46 @@ describe('oauth', () => {
     it('returns false for null/undefined', () => {
       expect(isTokenRevoked(null)).toBe(false);
       expect(isTokenRevoked(undefined)).toBe(false);
+    });
+  });
+
+  describe('refreshTokens with revoked token', () => {
+    afterEach(() => {
+      MockClient.clearRefreshError();
+    });
+
+    it('throws error detectable by isTokenRevoked on invalid_grant', async () => {
+      const revokedError = new Error('invalid_grant');
+      revokedError.error = 'invalid_grant';
+      MockClient.setRefreshError(revokedError);
+
+      try {
+        await refreshTokens('expired-refresh-token');
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(isTokenRevoked(err)).toBe(true);
+        expect(err.error).toBe('invalid_grant');
+      }
+    });
+
+    it('throws error NOT detectable as revoked on server_error', async () => {
+      const serverError = new Error('server_error');
+      serverError.error = 'server_error';
+      MockClient.setRefreshError(serverError);
+
+      try {
+        await refreshTokens('some-refresh-token');
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(isTokenRevoked(err)).toBe(false);
+        expect(err.error).toBe('server_error');
+      }
+    });
+
+    it('refreshes successfully when no error configured', async () => {
+      const tokenSet = await refreshTokens('valid-refresh-token');
+      expect(tokenSet.access_token).toBe('mock-refreshed-token');
+      expect(tokenSet.refresh_token).toBe('mock-new-refresh-token');
     });
   });
 });
