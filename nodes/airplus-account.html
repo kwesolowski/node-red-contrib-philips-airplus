@@ -19,23 +19,15 @@
 
             function updateAuthStatus() {
                 var hasCredentials = node.credentials && node.credentials.hasOwnProperty('refreshToken');
-                var expiresAt = node.credentials ? node.credentials.expiresAt : null;
 
-                if (hasCredentials && expiresAt) {
-                    var expDate = new Date(parseInt(expiresAt, 10) * 1000);
-                    var now = new Date();
-                    if (expDate > now) {
-                        var userId = node.credentials.userId || 'unknown';
-                        var userIdShort = userId.length > 8 ? userId.substring(0, 8) + '...' : userId;
-                        $('#auth-status').text('Authenticated (User: ' + userIdShort + ')')
-                            .removeClass('auth-error').addClass('auth-success');
-                        $('#auth-section-setup').hide();
-                        $('#auth-section-authenticated').show();
-                    } else {
-                        $('#auth-status').text('Token expired')
-                            .removeClass('auth-success').addClass('auth-error');
-                        showSetupSection();
-                    }
+                if (hasCredentials) {
+                    // Refresh token exists - server auto-refreshes access tokens
+                    var userId = node.credentials.userId || 'unknown';
+                    var userIdShort = userId.length > 8 ? userId.substring(0, 8) + '...' : userId;
+                    $('#auth-status').text('Authenticated (User: ' + userIdShort + ')')
+                        .removeClass('auth-error').addClass('auth-success');
+                    $('#auth-section-setup').hide();
+                    $('#auth-section-authenticated').show();
                 } else {
                     $('#auth-status').text('Not authenticated')
                         .removeClass('auth-success').addClass('auth-error');
