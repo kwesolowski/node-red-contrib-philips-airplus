@@ -69,7 +69,7 @@ describe('api', () => {
           meta: { code: 0 },
         });
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         const result = await client.getServerTime();
 
         expect(result.timestamp).toBe('1767669312');
@@ -89,7 +89,7 @@ describe('api', () => {
           status: 500,
         });
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await expect(client.getServerTime()).rejects.toThrow('Server time failed');
       });
     });
@@ -119,7 +119,7 @@ describe('api', () => {
           },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         const devices = await client.listDevices('PHILIPS:user-123');
 
         expect(devices).toHaveLength(1);
@@ -136,7 +136,7 @@ describe('api', () => {
           { data: [], meta: { code: 0 } },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await client.listDevices('PHILIPS:user-123');
 
         // Second call is getToken
@@ -151,7 +151,7 @@ describe('api', () => {
           { data: [], meta: { code: 0 } },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await client.listDevices('PHILIPS:user-123');
 
         // Third call is listDevices
@@ -167,7 +167,7 @@ describe('api', () => {
           { data: [], meta: { code: 0 } },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await client.listDevices('PHILIPS:user-123');
         await client.listDevices('PHILIPS:user-123');
 
@@ -197,7 +197,7 @@ describe('api', () => {
           },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         const mqttInfos = await client.getMqttInfo('PHILIPS:user-123', ['dev-123']);
 
         expect(mqttInfos).toHaveLength(1);
@@ -212,7 +212,7 @@ describe('api', () => {
           { data: { mqttinfos: [] }, meta: { code: 0 } },
         ]);
 
-        const client = createApiClient({ fetchFn: mockFetch });
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await client.getMqttInfo('PHILIPS:user-123', ['dev-1', 'dev-2']);
 
         // Third call is getMqttInfo

@@ -96,6 +96,7 @@ describe('mqtt', () => {
             client_id: 'client-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -116,6 +117,7 @@ describe('mqtt', () => {
         getMqttInfo: () => Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
         onConnect,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -135,6 +137,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -160,6 +163,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -185,6 +189,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -218,6 +223,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -255,6 +261,7 @@ describe('mqtt', () => {
           }),
         onStateChange,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -280,6 +287,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -307,6 +315,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -329,6 +338,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -349,6 +359,7 @@ describe('mqtt', () => {
         getMqttInfo: () => Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
         onDisconnect,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -364,6 +375,7 @@ describe('mqtt', () => {
       client = createMqttClient({
         getMqttInfo: () => Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c' }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       await expect(client.getDeviceState('dev-123')).rejects.toThrow('Not connected');
@@ -378,6 +390,7 @@ describe('mqtt', () => {
             device_id: 'dev-123',
           }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();

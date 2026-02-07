@@ -107,6 +107,7 @@ describe('MQTT Reconnection Logic', () => {
         onConnect,
         onDisconnect,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       // Initial connection
@@ -142,6 +143,7 @@ describe('MQTT Reconnection Logic', () => {
         onConnect,
         onDisconnect,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       // Initial connection
@@ -176,6 +178,7 @@ describe('MQTT Reconnection Logic', () => {
       client = createMqttClient({
         getMqttInfo: async () => mqttInfo,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -206,6 +209,7 @@ describe('MQTT Reconnection Logic', () => {
       client = createMqttClient({
         getMqttInfo,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       // Initial connection
@@ -246,6 +250,7 @@ describe('MQTT Reconnection Logic', () => {
         },
         onError,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       // Initial connection succeeds
@@ -291,6 +296,7 @@ describe('MQTT Reconnection Logic', () => {
           device_id: 'all-devices',
         }),
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
@@ -326,6 +332,7 @@ describe('MQTT Reconnection Logic', () => {
         getMqttInfo: async () => mqttInfo,
         onConnect,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       // Connect but don't subscribe any devices
@@ -356,6 +363,7 @@ describe('MQTT Reconnection Logic', () => {
         getMqttInfo: async () => mqttInfo,
         onError,
         mqttLib: mockMqttLib,
+        log: () => {},
       });
 
       const connectPromise = client.connect();
