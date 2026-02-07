@@ -105,8 +105,9 @@ module.exports = function (RED) {
               'Token revoked. Re-authenticate: run airplus-auth CLI, then click "Load from CLI" in config.'
             );
             tokenRevoked = true;
-            node.credentials = {};
-            RED.nodes.addCredentials(node.id, {});
+            node.credentials = { tokenRevoked: 'true' };
+            RED.nodes.addCredentials(node.id, { tokenRevoked: 'true' });
+            node.emit('auth-failed', 'token revoked');
             updateStatus();
           } else {
             node.error(`Token refresh failed: ${err.message}`);
@@ -456,6 +457,11 @@ module.exports = function (RED) {
 
     // Load credentials from CLI file (single source of truth)
     function loadCredentialsFromCliFile() {
+      // Don't reload revoked credentials from CLI file
+      if (node.credentials && node.credentials.tokenRevoked) {
+        node.log('Skipping CLI file load - token previously revoked');
+        return false;
+      }
       try {
         if (fs.existsSync(CREDENTIALS_FILE)) {
           const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
@@ -477,6 +483,11 @@ module.exports = function (RED) {
 
     // Initialize on startup
     async function initialize() {
+      // Restore revocation state from persisted credentials
+      if (node.credentials && node.credentials.tokenRevoked) {
+        tokenRevoked = true;
+      }
+
       // Always load from CLI file first (single source of truth)
       loadCredentialsFromCliFile();
 
@@ -485,6 +496,7 @@ module.exports = function (RED) {
       if (!isAuthenticated()) {
         node.log('Not authenticated, skipping initialization');
         updateStatus();
+        node.emit('auth-failed', tokenRevoked ? 'token revoked' : 'not authenticated');
         return;
       }
 
@@ -529,6 +541,7 @@ module.exports = function (RED) {
       userId: { type: 'text' },
       refreshToken: { type: 'password' },
       expiresAt: { type: 'text' },
+      tokenRevoked: { type: 'text' },
     },
   });
 

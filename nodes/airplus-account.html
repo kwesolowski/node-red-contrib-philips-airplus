@@ -8,7 +8,8 @@
         credentials: {
             userId: { type: 'text' },
             refreshToken: { type: 'password' },
-            expiresAt: { type: 'text' }
+            expiresAt: { type: 'text' },
+            tokenRevoked: { type: 'text' }
         },
         label: function() {
             return this.name || 'Philips Air+';
@@ -20,7 +21,11 @@
             function updateAuthStatus() {
                 var hasCredentials = node.credentials && node.credentials.hasOwnProperty('refreshToken');
 
-                if (hasCredentials) {
+                if (node.credentials && node.credentials.tokenRevoked) {
+                    $('#auth-status').text('Token revoked - re-authenticate')
+                        .removeClass('auth-success').addClass('auth-error');
+                    showSetupSection();
+                } else if (hasCredentials) {
                     // Refresh token exists - server auto-refreshes access tokens
                     var userId = node.credentials.userId || 'unknown';
                     var userIdShort = userId.length > 8 ? userId.substring(0, 8) + '...' : userId;
@@ -55,14 +60,17 @@
                             $('#cli-instructions').hide();
 
                             // Auto-load if Node-RED credentials are missing (only once)
+                            // Skip auto-load if token was revoked (CLI file has stale credentials)
                             var hasNodeRedCreds = node.credentials && node.credentials.refreshToken;
+                            var isRevoked = node.credentials && node.credentials.tokenRevoked;
                             console.log('[airplus-account] Auto-load check:', {
                                 hasCredentials: !!node.credentials,
                                 hasRefreshToken: !!hasNodeRedCreds,
+                                isRevoked: !!isRevoked,
                                 autoLoadAttempted: autoLoadAttempted,
-                                willAutoLoad: !hasNodeRedCreds && !autoLoadAttempted
+                                willAutoLoad: !hasNodeRedCreds && !isRevoked && !autoLoadAttempted
                             });
-                            if (!hasNodeRedCreds && !autoLoadAttempted) {
+                            if (!hasNodeRedCreds && !isRevoked && !autoLoadAttempted) {
                                 autoLoadAttempted = true;
                                 console.log('[airplus-account] Auto-loading CLI credentials...');
                                 $('#load-cli-btn').click();

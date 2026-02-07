@@ -166,13 +166,19 @@ module.exports = function (RED) {
       }
     };
 
+    const onAuthFailed = reason => {
+      node.status({ fill: 'red', shape: 'ring', text: reason });
+    };
+
     accountNode.on('connected', onConnected);
     accountNode.on('disconnected', onDisconnected);
+    accountNode.on('auth-failed', onAuthFailed);
 
     // Cleanup on close
     node.on('close', function (done) {
       accountNode.removeListener('connected', onConnected);
       accountNode.removeListener('disconnected', onDisconnected);
+      accountNode.removeListener('auth-failed', onAuthFailed);
       done();
     });
 

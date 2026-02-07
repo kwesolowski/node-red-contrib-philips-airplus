@@ -123,8 +123,13 @@ module.exports = function (RED) {
       }
     };
 
+    const onAuthFailed = reason => {
+      node.status({ fill: 'red', shape: 'ring', text: reason });
+    };
+
     accountNode.on('connected', onConnected);
     accountNode.on('disconnected', onDisconnected);
+    accountNode.on('auth-failed', onAuthFailed);
 
     // Set initial status before checking connection
     node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
@@ -153,6 +158,7 @@ module.exports = function (RED) {
       accountNode.unsubscribe(deviceId, onStatusUpdate);
       accountNode.removeListener('connected', onConnected);
       accountNode.removeListener('disconnected', onDisconnected);
+      accountNode.removeListener('auth-failed', onAuthFailed);
       done();
     });
   }
