@@ -217,9 +217,12 @@ describe('MQTT Reconnection Logic', () => {
       expect(getMqttInfo).toHaveBeenCalledTimes(1);
       const firstClientId = mockMqttLib.getLastClient();
 
+      client.subscribeDevice('dev-bedroom');
+
       // Simulate disconnect
       mockMqttLib.getLastClient().simulateDisconnect();
-      await jest.advanceTimersByTimeAsync(1000);
+      await jest.advanceTimersByTimeAsync(1000); // fire reconnect timer
+      await jest.advanceTimersByTimeAsync(10); // let client.end() close event fire
 
       // Reconnect should fetch new MQTT info (with fresh token)
       mockMqttLib.getLastClient().simulateConnect();
@@ -251,20 +254,27 @@ describe('MQTT Reconnection Logic', () => {
       mockMqttLib.getLastClient().simulateConnect();
       await connectPromise;
 
+      client.subscribeDevice('dev-bedroom');
+
       // Disconnect
       mockMqttLib.getLastClient().simulateDisconnect();
       await jest.advanceTimersByTimeAsync(10);
 
       // Make getMqttInfo fail on reconnect
       shouldFail = true;
-      await jest.advanceTimersByTimeAsync(1000);
+      await jest.advanceTimersByTimeAsync(1000); // fire reconnect timer
+      await jest.advanceTimersByTimeAsync(10); // let client.end() close event fire + getMqttInfo throw
 
       // Should have called onError and scheduled another retry
-      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Token refresh failed' }));
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Token refresh failed' }),
+        expect.objectContaining({ recoverable: true })
+      );
 
-      // Allow success on next attempt
+      // Allow success on next attempt (backoff: 1000 * 2^1 = 2000ms)
       shouldFail = false;
-      await jest.advanceTimersByTimeAsync(2000); // Next backoff
+      await jest.advanceTimersByTimeAsync(2000);
+      // client was nulled after failed attempt, so no client.end() delay
       mockMqttLib.getLastClient().simulateConnect();
       await jest.advanceTimersByTimeAsync(10);
 
@@ -360,10 +370,14 @@ describe('MQTT Reconnection Logic', () => {
       mockMqttLib.getLastClient().simulateDisconnect();
       await jest.advanceTimersByTimeAsync(10);
 
-      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'MQTT connection timeout' }));
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'MQTT connection timeout' }),
+        expect.objectContaining({ recoverable: true })
+      );
 
       // Should attempt reconnect
-      await jest.advanceTimersByTimeAsync(1000);
+      await jest.advanceTimersByTimeAsync(1000); // fire reconnect timer
+      await jest.advanceTimersByTimeAsync(10); // let client.end() close event fire
       mockMqttLib.getLastClient().simulateConnect();
       await jest.advanceTimersByTimeAsync(10);
 

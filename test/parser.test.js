@@ -1,5 +1,6 @@
 /**
  * Tests for AWS IoT Shadow parser module.
+ * V3 protocol only - uses DID codes (D03102, D0310C, etc.)
  */
 
 const {
@@ -15,12 +16,12 @@ describe('parser', () => {
       const shadow = {
         state: {
           reported: {
-            powerOn: true,
-            mode: 'A',
-            pm25: '15',
+            D03102: 1,
+            D0310C: 0,
+            D03221: '15',
           },
           desired: {
-            powerOn: true,
+            D03102: 1,
           },
         },
         timestamp: 1767673935,
@@ -32,7 +33,7 @@ describe('parser', () => {
       expect(result.reported.power).toBe(true);
       expect(result.reported.mode).toBe('auto');
       expect(result.reported.pm25).toBe(15);
-      expect(result.desired.powerOn).toBe(true);
+      expect(result.desired.D03102).toBe(1);
       expect(result.timestamp).toBe(1767673935);
       expect(result.version).toBe(123);
     });
@@ -40,7 +41,7 @@ describe('parser', () => {
     it('handles shadow without desired state', () => {
       const shadow = {
         state: {
-          reported: { powerOn: false },
+          reported: { D03102: 0 },
         },
       };
 
@@ -63,10 +64,8 @@ describe('parser', () => {
 
   describe('parseReportedState', () => {
     it('parses power state', () => {
-      expect(parseReportedState({ powerOn: true }).power).toBe(true);
-      expect(parseReportedState({ powerOn: false }).power).toBe(false);
-      expect(parseReportedState({ pwr: '1' }).power).toBe(true);
-      expect(parseReportedState({ pwr: '0' }).power).toBe(false);
+      expect(parseReportedState({ D03102: 1 }).power).toBe(true);
+      expect(parseReportedState({ D03102: 0 }).power).toBe(false);
     });
 
     it('parses connected state', () => {
@@ -80,60 +79,51 @@ describe('parser', () => {
     });
 
     it('parses mode', () => {
-      expect(parseReportedState({ mode: 'A' }).mode).toBe('auto');
-      expect(parseReportedState({ mode: 'S' }).mode).toBe('sleep');
-      expect(parseReportedState({ mode: 'T' }).mode).toBe('turbo');
-      expect(parseReportedState({ mode: 'M' }).mode).toBe('manual');
+      expect(parseReportedState({ D0310C: 0 }).mode).toBe('auto');
+      expect(parseReportedState({ D0310C: 17 }).mode).toBe('sleep');
+      expect(parseReportedState({ D0310C: 18 }).mode).toBe('turbo');
+    });
+
+    it('parses manual mode with fan speed', () => {
+      const result = parseReportedState({ D0310C: 12 });
+      expect(result.mode).toBe('manual');
+      expect(result.fanSpeed).toBe(12);
     });
 
     it('preserves raw mode value', () => {
-      const result = parseReportedState({ mode: 'A' });
-      expect(result.modeRaw).toBe('A');
-    });
-
-    it('parses fan speed', () => {
-      expect(parseReportedState({ om: '12' }).fanSpeed).toBe(12);
-      expect(parseReportedState({ fanSpeed: 8 }).fanSpeed).toBe(8);
+      const result = parseReportedState({ D0310C: 0 });
+      expect(result.modeRaw).toBe(0);
     });
 
     it('parses PM2.5', () => {
-      expect(parseReportedState({ pm25: '15' }).pm25).toBe(15);
-      expect(parseReportedState({ pm25: 20 }).pm25).toBe(20);
+      expect(parseReportedState({ D03221: '15' }).pm25).toBe(15);
+      expect(parseReportedState({ D03221: 20 }).pm25).toBe(20);
     });
 
     it('parses humidity', () => {
-      expect(parseReportedState({ rh: '45' }).humidity).toBe(45);
-      expect(parseReportedState({ humidity: 50 }).humidity).toBe(50);
+      expect(parseReportedState({ D03125: '45' }).humidity).toBe(45);
     });
 
-    it('parses temperature', () => {
-      expect(parseReportedState({ temp: '22' }).temperature).toBe(22);
-      expect(parseReportedState({ temperature: 25 }).temperature).toBe(25);
+    it('parses temperature (divides by 10)', () => {
+      expect(parseReportedState({ D03224: '220' }).temperature).toBe(22);
+      expect(parseReportedState({ D03224: '250' }).temperature).toBe(25);
     });
 
-    it('parses humidifier properties', () => {
-      const result = parseReportedState({
-        rhset: '50',
-        wl: '80',
-      });
-      expect(result.targetHumidity).toBe(50);
-      expect(result.waterLevel).toBe(80);
+    it('parses target humidity', () => {
+      expect(parseReportedState({ D03128: '50' }).targetHumidity).toBe(50);
     });
 
     it('parses air quality index', () => {
-      expect(parseReportedState({ iaql: '3' }).airQualityIndex).toBe(3);
-      expect(parseReportedState({ airQualityIndex: 5 }).airQualityIndex).toBe(5);
+      expect(parseReportedState({ D03120: '3' }).airQualityIndex).toBe(3);
     });
 
     it('parses child lock', () => {
-      expect(parseReportedState({ cl: '1' }).childLock).toBe(true);
-      expect(parseReportedState({ cl: '0' }).childLock).toBe(false);
-      expect(parseReportedState({ childLock: true }).childLock).toBe(true);
+      expect(parseReportedState({ D03103: 1 }).childLock).toBe(true);
+      expect(parseReportedState({ D03103: 0 }).childLock).toBe(false);
     });
 
     it('parses display light', () => {
-      expect(parseReportedState({ uil: '100' }).displayLight).toBe(100);
-      expect(parseReportedState({ displayLight: 50 }).displayLight).toBe(50);
+      expect(parseReportedState({ D03105: '100' }).displayLight).toBe(100);
     });
 
     it('parses firmware versions', () => {
@@ -155,7 +145,7 @@ describe('parser', () => {
       expect(result.timezone).toBe('Europe/Warsaw');
     });
 
-    it('parses filter status', () => {
+    it('parses filter status (v1 fields)', () => {
       const result = parseReportedState({
         fltsts0: '200',
         fltt0: '360',
@@ -172,7 +162,7 @@ describe('parser', () => {
     });
 
     it('preserves raw properties', () => {
-      const props = { powerOn: true, unknown: 'value' };
+      const props = { D03102: 1, unknown: 'value' };
       const result = parseReportedState(props);
       expect(result.raw).toBe(props);
     });
@@ -180,49 +170,44 @@ describe('parser', () => {
 
   describe('buildDesiredState', () => {
     it('builds power state', () => {
-      expect(buildDesiredState({ power: true })).toEqual({ powerOn: true });
-      expect(buildDesiredState({ power: false })).toEqual({ powerOn: false });
+      expect(buildDesiredState({ power: true })).toEqual({ D03102: 1 });
+      expect(buildDesiredState({ power: false })).toEqual({ D03102: 0 });
     });
 
     it('builds mode state', () => {
-      expect(buildDesiredState({ mode: 'auto' })).toEqual({ mode: 'A' });
-      expect(buildDesiredState({ mode: 'sleep' })).toEqual({ mode: 'S' });
-      expect(buildDesiredState({ mode: 'turbo' })).toEqual({ mode: 'T' });
-      expect(buildDesiredState({ mode: 'manual' })).toEqual({ mode: 'M' });
+      expect(buildDesiredState({ mode: 'auto' })).toEqual({ D0310C: 0 });
+      expect(buildDesiredState({ mode: 'sleep' })).toEqual({ D0310C: 17 });
+      expect(buildDesiredState({ mode: 'turbo' })).toEqual({ D0310C: 18 });
     });
 
-    it('passes through raw mode codes', () => {
-      expect(buildDesiredState({ mode: 'A' })).toEqual({ mode: 'A' });
-    });
-
-    it('builds fan speed state', () => {
-      expect(buildDesiredState({ fanSpeed: 12 })).toEqual({ om: '12' });
+    it('builds fan speed state (clamped to AC3737 max)', () => {
+      expect(buildDesiredState({ fanSpeed: 2 })).toEqual({ D0310C: 2 });
+      // AC3737 max fan speed is 2 - higher values get clamped
+      expect(buildDesiredState({ fanSpeed: 12 })).toEqual({ D0310C: 2 });
     });
 
     it('builds target humidity state', () => {
-      expect(buildDesiredState({ targetHumidity: 50 })).toEqual({ rhset: '50' });
+      expect(buildDesiredState({ targetHumidity: 50 })).toEqual({ D03128: 50 });
     });
 
     it('builds child lock state', () => {
-      expect(buildDesiredState({ childLock: true })).toEqual({ cl: '1' });
-      expect(buildDesiredState({ childLock: false })).toEqual({ cl: '0' });
+      expect(buildDesiredState({ childLock: true })).toEqual({ D03103: 1 });
+      expect(buildDesiredState({ childLock: false })).toEqual({ D03103: 0 });
     });
 
     it('builds display light state', () => {
-      expect(buildDesiredState({ displayLight: 2 })).toEqual({ uil: '2' });
+      expect(buildDesiredState({ displayLight: 2 })).toEqual({ D03105: 2 });
     });
 
     it('builds combined state', () => {
       const result = buildDesiredState({
         power: true,
         mode: 'auto',
-        fanSpeed: 8,
       });
 
       expect(result).toEqual({
-        powerOn: true,
-        mode: 'A',
-        om: '8',
+        D03102: 1,
+        D0310C: 0,
       });
     });
 
@@ -232,8 +217,8 @@ describe('parser', () => {
         mode: undefined,
       });
 
-      expect(result).toEqual({ powerOn: true });
-      expect(result).not.toHaveProperty('mode');
+      expect(result).toEqual({ D03102: 1 });
+      expect(result).not.toHaveProperty('D0310C');
     });
   });
 
@@ -259,13 +244,13 @@ describe('parser', () => {
     });
 
     it('merges raw properties', () => {
-      const existing = { raw: { pwr: '1' } };
-      const update = { raw: { pm25: '15' } };
+      const existing = { raw: { D03102: 1 } };
+      const update = { raw: { D03221: '15' } };
 
       const result = mergeStatus(existing, update);
 
-      expect(result.raw.pwr).toBe('1');
-      expect(result.raw.pm25).toBe('15');
+      expect(result.raw.D03102).toBe(1);
+      expect(result.raw.D03221).toBe('15');
     });
 
     it('merges filter properties', () => {
