@@ -7,11 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
-const {
-  refreshTokens,
-  extractUserId,
-  isTokenRevoked,
-} = require('../lib/oauth');
+const { refreshTokens, extractUserId, isTokenRevoked } = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
 const { parseShadow, mergeStatus } = require('../lib/parser');
@@ -166,7 +162,7 @@ module.exports = function (RED) {
       mqttClients.clear();
 
       if (deviceCache.length === 0) {
-        node.warn('No devices to connect');
+        node.log('No devices to connect');
         return;
       }
 
@@ -200,7 +196,7 @@ module.exports = function (RED) {
             node.emit('connected', deviceId);
           },
           onDisconnect: () => {
-            node.warn(`MQTT disconnected: ${deviceName} (will auto-reconnect)`);
+            node.log(`MQTT disconnected: ${deviceName} (will auto-reconnect)`);
             updateStatus();
             // Emit event for this device's disconnection
             node.emit('disconnected', deviceId);
@@ -374,7 +370,7 @@ module.exports = function (RED) {
             if (client && client.isConnected() && !deviceStatus.has(deviceId)) {
               node.log(`Requesting initial state for ${deviceId}`);
               client.getDeviceState(deviceId).catch(err => {
-                node.warn(`Failed to get initial state: ${err.message}`);
+                node.log(`Failed to get initial state: ${err.message}`);
               });
             }
           }, 1000);
@@ -495,7 +491,7 @@ module.exports = function (RED) {
           node.log('Connecting to MQTT...');
           await connectMqtt();
         } else {
-          node.warn('No devices found, skipping MQTT connection');
+          node.log('No devices found, skipping MQTT connection');
         }
         updateStatus();
       } catch (err) {

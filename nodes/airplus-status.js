@@ -101,7 +101,7 @@ module.exports = function (RED) {
             node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for updates...' });
           }
         } catch (err) {
-          node.warn(`Failed to fetch initial state: ${err.message}`);
+          node.log(`Failed to fetch initial state: ${err.message}`);
           node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for updates...' });
         }
       }
