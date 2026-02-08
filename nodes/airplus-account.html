@@ -242,136 +242,6 @@
                 }
             });
 
-            // Toggle manual auth section
-            $('#show-manual-auth').on('click', function() {
-                $('#manual-auth-section').toggle();
-            });
-
-            // Manual OAuth flow with popup window
-            var authPopup = null;
-            var popupPollInterval = null;
-
-            function stopPopupPolling() {
-                if (popupPollInterval) {
-                    clearInterval(popupPollInterval);
-                    popupPollInterval = null;
-                }
-            }
-
-            function startPopupPolling() {
-                stopPopupPolling();
-                popupPollInterval = setInterval(function() {
-                    if (!authPopup || authPopup.closed) {
-                        stopPopupPolling();
-                        return;
-                    }
-
-                    try {
-                        // Try to read popup URL - may work after redirect to custom scheme
-                        var url = authPopup.location.href;
-                        if (url && url.startsWith('com.philips.air://')) {
-                            // Got the redirect URL!
-                            stopPopupPolling();
-                            authPopup.close();
-                            $('#auth-redirect-input').val(url);
-                            RED.notify('Captured redirect URL!', 'success');
-                            // Auto-submit
-                            $('#auth-exchange').click();
-                        }
-                    } catch (e) {
-                        // Cross-origin error - expected while on login page
-                    }
-                }, 500);
-            }
-
-            $('#auth-get-url').on('click', function() {
-                $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Opening...');
-
-                $.ajax({
-                    url: 'philips-airplus/auth/start',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ node: node.id }),
-                    success: function(data) {
-                        // Open popup window for login
-                        authPopup = window.open(
-                            data.url,
-                            'philips-auth',
-                            'width=500,height=700,scrollbars=yes,resizable=yes'
-                        );
-
-                        if (!authPopup || authPopup.closed) {
-                            // Popup blocked - fallback to showing URL
-                            $('#auth-url-display').val(data.url);
-                            $('#auth-url-fallback').show();
-                            RED.notify('Popup blocked. Copy URL and open in new tab.', 'warning');
-                        } else {
-                            // Start polling for redirect
-                            startPopupPolling();
-                            RED.notify('Login window opened. Complete login, then copy redirect URL.', 'info');
-                        }
-
-                        $('#auth-step2').show();
-                        $('#auth-get-url').prop('disabled', false).html('<i class="fa fa-external-link"></i> 1. Start Login');
-                    },
-                    error: function(xhr) {
-                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-                        RED.notify('Failed to start auth: ' + error, 'error');
-                        $('#auth-get-url').prop('disabled', false).html('<i class="fa fa-external-link"></i> 1. Start Login');
-                    }
-                });
-            });
-
-            $('#auth-url-copy').on('click', function() {
-                var url = $('#auth-url-display').val();
-                navigator.clipboard.writeText(url).then(function() {
-                    RED.notify('URL copied to clipboard', 'success');
-                });
-            });
-
-            $('#auth-exchange').on('click', function() {
-                var redirectUrl = $('#auth-redirect-input').val().trim();
-                if (!redirectUrl) {
-                    RED.notify('Please paste the redirect URL', 'error');
-                    return;
-                }
-
-                $(this).prop('disabled', true).text('Exchanging...');
-
-                $.ajax({
-                    url: 'philips-airplus/auth/complete',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({
-                        node: node.id,
-                        redirect_url: redirectUrl
-                    }),
-                    success: function(data) {
-                        if (data.success) {
-                            RED.notify('Authentication successful!', 'success');
-                            node.credentials = node.credentials || {};
-                            node.credentials.userId = data.userId;
-                            node.credentials.refreshToken = '***loaded***'; // Placeholder (real token stored server-side)
-                            node.credentials.expiresAt = String(data.expiresAt);
-                            updateAuthStatus();
-                            $('#auth-url-display').hide();
-                            $('#auth-url-copy').hide();
-                            $('#auth-step2').hide();
-                            $('#auth-redirect-input').val('');
-                            $('#manual-auth-section').hide();
-                        } else {
-                            RED.notify('Authentication failed: ' + (data.error || 'Unknown'), 'error');
-                        }
-                        $('#auth-exchange').prop('disabled', false).text('3. Exchange Code');
-                    },
-                    error: function(xhr) {
-                        var error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-                        RED.notify('Authentication failed: ' + error, 'error');
-                        $('#auth-exchange').prop('disabled', false).text('3. Exchange Code');
-                    }
-                });
-            });
-
             // Re-authenticate button
             $('#auth-reauth').on('click', function() {
                 showSetupSection();
@@ -567,49 +437,6 @@
             <div id="import-file-status" style="margin-top: 10px; font-size: 12px; display: none;"></div>
         </div>
 
-        <!-- Manual auth (fallback) -->
-        <div class="form-row" style="margin-top: 10px;">
-            <a href="#" id="show-manual-auth" style="font-size: 12px; color: #666;">
-                <i class="fa fa-key"></i> Manual authentication (advanced)
-            </a>
-        </div>
-
-        <div id="manual-auth-section" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <div class="form-row" style="margin-bottom: 10px;">
-                <button type="button" id="auth-get-url" class="red-ui-button red-ui-button-primary">
-                    <i class="fa fa-external-link"></i> 1. Start Login
-                </button>
-            </div>
-
-            <div class="form-row" style="margin-bottom: 10px; display: none;" id="auth-url-fallback">
-                <input type="text" id="auth-url-display" readonly style="width: 100%;"
-                       placeholder="Authorization URL">
-                <button type="button" id="auth-url-copy" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
-                    <i class="fa fa-copy"></i> Copy URL
-                </button>
-            </div>
-
-            <div id="auth-step2" style="display: none;">
-                <div class="form-row" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
-                    <p style="font-size: 12px; color: #856404; margin: 0;">
-                        <strong>2. After logging in:</strong> The browser will show an error page
-                        (cannot open <code>com.philips.air://</code>). Copy the <strong>entire URL</strong>
-                        from the address bar and paste it below.
-                    </p>
-                </div>
-
-                <div class="form-row" style="margin-bottom: 10px;">
-                    <input type="text" id="auth-redirect-input" style="width: 100%;"
-                           placeholder="Paste URL from address bar (com.philips.air://loginredirect?code=...)">
-                </div>
-
-                <div class="form-row">
-                    <button type="button" id="auth-exchange" class="red-ui-button red-ui-button-primary">
-                        <i class="fa fa-check"></i> 3. Complete Login
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 11px; color: #999; text-align: right;">
@@ -630,23 +457,12 @@
     <p>Configuration node for Philips Air+ cloud account.</p>
 
     <h3>Authentication</h3>
-    <p>Two authentication methods are available:</p>
-
-    <h4>CLI Authentication (Recommended)</h4>
-    <p>Run this command on the Node-RED server:</p>
+    <p>Run the CLI auth tool on a machine with a browser:</p>
     <pre>cd ~/.node-red/node_modules/node-red-contrib-philips-airplus && npm run auth</pre>
     <p>This opens a browser window for login. After successful authentication,
     click "Load from CLI" in the node configuration to import the credentials.</p>
-
-    <h4>Manual Authentication</h4>
-    <p>If CLI is not available (e.g., headless server), use manual OAuth:</p>
-    <ol>
-        <li>Click "Get Auth URL" to generate an authorization URL</li>
-        <li>Open the URL in your browser and log in to your Philips account</li>
-        <li>After login, you'll be redirected to a URL starting with <code>com.philips.air://</code></li>
-        <li>Copy that entire redirect URL and paste it in the input field</li>
-        <li>Click "Exchange Code" to complete authentication</li>
-    </ol>
+    <p>For headless servers, run the auth on another machine and use "Import credentials JSON"
+    to transfer the credentials file.</p>
 
     <h3>Connection</h3>
     <p>Once authenticated, the node maintains a WebSocket connection to receive

@@ -8,11 +8,6 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 const {
-  generatePkce,
-  generateState,
-  buildAuthUrl,
-  parseRedirectUrl,
-  exchangeCode,
   refreshTokens,
   extractUserId,
   isTokenRevoked,
@@ -26,22 +21,6 @@ const { TOKEN_REFRESH_BUFFER_MS } = require('../lib/constants');
 const CREDENTIALS_FILE = path.join(os.homedir(), '.philips-airplus', 'credentials.json');
 
 module.exports = function (RED) {
-  // PKCE state storage (in-memory, short TTL)
-  const pkceStore = new Map();
-  const PKCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-  function cleanupPkceStore() {
-    const now = Date.now();
-    for (const [key, value] of pkceStore) {
-      if (now > value.expires) {
-        pkceStore.delete(key);
-      }
-    }
-  }
-
-  // Cleanup old PKCE entries periodically
-  setInterval(cleanupPkceStore, 60000);
-
   function AirplusAccountNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
@@ -543,75 +522,6 @@ module.exports = function (RED) {
       expiresAt: { type: 'text' },
       tokenRevoked: { type: 'text' },
     },
-  });
-
-  // Admin endpoints for OAuth flow
-  RED.httpAdmin.post('/philips-airplus/auth/start', async function (req, res) {
-    const nodeId = req.body.node;
-    if (!nodeId) {
-      return res.status(400).json({ error: 'Missing node ID' });
-    }
-
-    try {
-      const { verifier, challenge } = generatePkce();
-      const state = generateState();
-      const url = await buildAuthUrl({ codeChallenge: challenge, state });
-
-      // Store PKCE verifier with state as key
-      pkceStore.set(state, {
-        verifier,
-        nodeId,
-        expires: Date.now() + PKCE_TTL_MS,
-      });
-
-      res.json({ url, state });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  RED.httpAdmin.post('/philips-airplus/auth/complete', async function (req, res) {
-    const { redirect_url } = req.body;
-
-    if (!redirect_url) {
-      return res.status(400).json({ error: 'Missing redirect URL' });
-    }
-
-    try {
-      const { code, state } = parseRedirectUrl(redirect_url);
-
-      const stored = pkceStore.get(state);
-      if (!stored) {
-        return res.status(400).json({ error: 'Auth session expired or not found' });
-      }
-
-      const tokenSet = await exchangeCode({
-        code,
-        codeVerifier: stored.verifier,
-      });
-
-      // Clean up PKCE storage
-      pkceStore.delete(state);
-
-      // Extract user ID
-      const userId = extractUserId(tokenSet);
-
-      // Update node credentials
-      const node = RED.nodes.getNode(stored.nodeId);
-      if (node) {
-        node.credentials.userId = userId;
-        node.credentials.refreshToken = tokenSet.refresh_token;
-        node.credentials.expiresAt = String(tokenSet.expires_at || 0);
-      }
-
-      res.json({
-        success: true,
-        userId,
-        expiresAt: tokenSet.expires_at,
-      });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
   });
 
   RED.httpAdmin.get('/philips-airplus/devices', async function (req, res) {

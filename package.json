@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-philips-airplus",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Philips Air+ cloud integration for air purifiers and humidifiers",
   "keywords": [
     "node-red",
@@ -39,8 +39,7 @@
   "dependencies": {
     "cockatiel": "^3.2.1",
     "mqtt": "^5.10.0",
-    "openid-client": "^5.7.0",
-    "qrcode-terminal": "^0.12.0"
+    "openid-client": "^5.7.0"
   },
   "optionalDependencies": {
     "playwright": "^1.57.0"

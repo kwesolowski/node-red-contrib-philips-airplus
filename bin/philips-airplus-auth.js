@@ -2,10 +2,11 @@
 /**
  * CLI tool for Philips Air+ OAuth authentication.
  *
+ * Opens a Playwright browser for OAuth login (requires display).
+ *
  * Usage:
- *   philips-airplus-auth           # Device code flow (default, but may not work)
- *   philips-airplus-auth --browser # Playwright browser automation (requires display)
- *   philips-airplus-auth --export  # Export credentials as JSON (for transfer to RPI)
+ *   philips-airplus-auth          # Browser-based OAuth login
+ *   philips-airplus-auth --export # Export credentials as JSON (for transfer)
  */
 
 const crypto = require('crypto');
@@ -85,138 +86,7 @@ function extractUserId(tokenSet) {
 }
 
 // =============================================================================
-// Device Code Flow (RFC 8628)
-// =============================================================================
-
-const DEVICE_AUTH_ENDPOINT = `${OIDC_ISSUER}/device_authorization`;
-const TOKEN_ENDPOINT = `${OIDC_ISSUER}/token`;
-
-async function requestDeviceCode() {
-  const params = new URLSearchParams({
-    client_id: OIDC_CLIENT_ID,
-    scope: OIDC_SCOPES,
-  });
-
-  const response = await fetch(DEVICE_AUTH_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Device authorization failed: ${response.status} - ${text}`);
-  }
-
-  return response.json();
-}
-
-async function pollTokenOnce(deviceCode) {
-  const params = new URLSearchParams({
-    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-    device_code: deviceCode,
-    client_id: OIDC_CLIENT_ID,
-    client_secret: OIDC_CLIENT_SECRET,
-  });
-
-  const response = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  });
-
-  const data = await response.json();
-
-  if (response.ok) {
-    return { status: 'success', tokens: data };
-  }
-
-  switch (data.error) {
-    case 'authorization_pending':
-      return { status: 'pending' };
-    case 'slow_down':
-      return { status: 'slow_down' };
-    case 'access_denied':
-      return { status: 'error', error: 'User denied access' };
-    case 'expired_token':
-      return { status: 'error', error: 'Device code expired' };
-    default:
-      return { status: 'error', error: data.error_description || data.error || 'Unknown error' };
-  }
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function authenticateWithDeviceCode() {
-  console.log('Philips Air+ Authentication (Device Code Flow)\n');
-
-  // Check for existing credentials
-  const existing = loadCredentials();
-  if (existing && existing.refresh_token) {
-    console.log('Found existing credentials.');
-    console.log(`User ID: ${existing.user_id}`);
-    console.log(`Expires: ${new Date(existing.expires_at * 1000).toLocaleString()}`);
-    console.log('\nTo re-authenticate, delete:', CREDENTIALS_FILE);
-    return;
-  }
-
-  console.log('Requesting device code...');
-  const deviceAuth = await requestDeviceCode();
-
-  // Display verification info
-  console.log('\n' + '='.repeat(60));
-  console.log('  To authenticate, visit:');
-  console.log(`  ${deviceAuth.verification_uri}`);
-  console.log('');
-  console.log(`  And enter code: ${deviceAuth.user_code}`);
-  console.log('='.repeat(60));
-
-  // Show QR code if available
-  try {
-    const qrcode = require('qrcode-terminal');
-    console.log('\nOr scan this QR code:\n');
-    qrcode.generate(deviceAuth.verification_uri_complete, { small: true });
-  } catch {
-    // qrcode-terminal not installed, skip QR
-  }
-
-  console.log('\nWaiting for authorization...');
-  console.log(`(Code expires in ${Math.floor(deviceAuth.expires_in / 60)} minutes)\n`);
-
-  // Poll for token
-  const startTime = Date.now();
-  const expiresAtMs = startTime + deviceAuth.expires_in * 1000;
-  let interval = (deviceAuth.interval || 5) * 1000;
-
-  while (Date.now() < expiresAtMs) {
-    await sleep(interval);
-
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    process.stdout.write(`\rPolling... (${elapsed}s elapsed)`);
-
-    const result = await pollTokenOnce(deviceAuth.device_code);
-
-    switch (result.status) {
-      case 'success':
-        console.log('\n\nAuthentication successful!');
-        return result.tokens;
-      case 'pending':
-        break;
-      case 'slow_down':
-        interval += 5000;
-        break;
-      case 'error':
-        throw new Error(result.error);
-    }
-  }
-
-  throw new Error('Device code expired');
-}
-
-// =============================================================================
-// Playwright Browser Flow
+// Browser Flow (Playwright + PKCE)
 // =============================================================================
 
 function generatePkce() {
@@ -273,26 +143,15 @@ async function exchangeCode(code, codeVerifier) {
   return tokenResponse.json();
 }
 
-async function authenticateWithBrowser() {
-  console.log('Philips Air+ Authentication (Browser Flow)\n');
-
-  // Check for existing credentials
-  const existing = loadCredentials();
-  if (existing && existing.refresh_token) {
-    console.log('Found existing credentials.');
-    console.log(`User ID: ${existing.user_id}`);
-    console.log(`Expires: ${new Date(existing.expires_at * 1000).toLocaleString()}`);
-    console.log('\nTo re-authenticate, delete:', CREDENTIALS_FILE);
-    return;
-  }
+async function authenticate() {
+  console.log('Philips Air+ Authentication\n');
 
   let chromium;
   try {
     ({ chromium } = require('playwright'));
   } catch {
     throw new Error(
-      'Playwright is not installed. Install with: npm install playwright\n' +
-        'Or use device code flow (default) which works without a browser.'
+      'Playwright is required. Install with: npm install playwright'
     );
   }
 
@@ -302,7 +161,7 @@ async function authenticateWithBrowser() {
   console.log('Building authorization URL...');
   const authUrl = await buildAuthUrl(challenge, state);
 
-  console.log('\nOpening browser for login...');
+  console.log('Opening browser for login...');
   console.log('Please log in to your Philips account.\n');
 
   const browser = await chromium.launch({
@@ -388,7 +247,6 @@ async function authenticateWithBrowser() {
 
 async function main() {
   const args = process.argv.slice(2);
-  const useBrowser = args.includes('--browser') || args.includes('-b');
   const doExport = args.includes('--export') || args.includes('-e');
 
   // Export mode - output existing credentials as JSON
@@ -404,18 +262,7 @@ async function main() {
   }
 
   try {
-    let tokenSet;
-
-    if (useBrowser) {
-      tokenSet = await authenticateWithBrowser();
-    } else {
-      tokenSet = await authenticateWithDeviceCode();
-    }
-
-    if (!tokenSet) {
-      // Already authenticated
-      return;
-    }
+    const tokenSet = await authenticate();
 
     const userId = extractUserId(tokenSet);
     console.log(`User ID: ${userId}`);
@@ -432,7 +279,7 @@ async function main() {
 
     console.log(`\nCredentials saved to: ${CREDENTIALS_FILE}`);
     console.log('\nYou can now use the Philips Air+ nodes in Node-RED.');
-    console.log('The nodes will automatically read credentials from this file.');
+    console.log('Click "Load from CLI" in the node config to import credentials.');
     console.log('\nTo transfer to another machine, run: philips-airplus-auth --export');
   } catch (err) {
     console.error('\nError:', err.message);
