@@ -22,14 +22,17 @@ module.exports = function (RED) {
       return;
     }
 
-    if (!deviceId) {
-      node.status({ fill: 'red', shape: 'ring', text: 'no device selected' });
-      node.error('No device selected');
-      return;
-    }
-
     // Track last known status for display when disconnected
     let lastStatus = null;
+
+    // Show grey status while waiting for account to be ready
+    node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
+
+    // Listen to auth-failed early (can fire before ready)
+    const onAuthFailed = reason => {
+      node.status({ fill: 'red', shape: 'ring', text: reason });
+    };
+    accountNode.on('auth-failed', onAuthFailed);
 
     // Status callback
     function onStatusUpdate(status, type) {
@@ -123,22 +126,30 @@ module.exports = function (RED) {
       }
     };
 
-    const onAuthFailed = reason => {
-      node.status({ fill: 'red', shape: 'ring', text: reason });
-    };
+    // Deferred init: validate device and set up event listeners
+    function init() {
+      if (!deviceId) {
+        node.status({ fill: 'red', shape: 'ring', text: 'no device selected' });
+        return;
+      }
 
-    accountNode.on('connected', onConnected);
-    accountNode.on('disconnected', onDisconnected);
-    accountNode.on('auth-failed', onAuthFailed);
+      accountNode.on('connected', onConnected);
+      accountNode.on('disconnected', onDisconnected);
 
-    // Set initial status before checking connection
-    node.status({ fill: 'grey', shape: 'ring', text: 'initializing...' });
+      if (accountNode.isConnected(deviceId)) {
+        subscribe();
+      } else {
+        node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for connection...' });
+      }
+    }
 
-    // Wait for account node to be ready
-    if (accountNode.isConnected(deviceId)) {
-      subscribe();
+    // Gate init on account readiness
+    let readyListener = null;
+    if (accountNode.isReady()) {
+      init();
     } else {
-      node.status({ fill: 'yellow', shape: 'ring', text: 'waiting for connection...' });
+      readyListener = () => init();
+      accountNode.once('ready', readyListener);
     }
 
     // Handle manual trigger input
@@ -155,10 +166,15 @@ module.exports = function (RED) {
 
     // Cleanup on close
     node.on('close', function (done) {
-      accountNode.unsubscribe(deviceId, onStatusUpdate);
+      if (deviceId) {
+        accountNode.unsubscribe(deviceId, onStatusUpdate);
+      }
       accountNode.removeListener('connected', onConnected);
       accountNode.removeListener('disconnected', onDisconnected);
       accountNode.removeListener('auth-failed', onAuthFailed);
+      if (readyListener) {
+        accountNode.removeListener('ready', readyListener);
+      }
       done();
     });
   }

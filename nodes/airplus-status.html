@@ -20,6 +20,37 @@
             var deviceSelect = $('#node-input-device');
             var deviceNameInput = $('#node-input-deviceName');
 
+            var retried = false;
+
+            function populateDevices(devices) {
+                deviceSelect.empty();
+
+                if (devices.length === 0) {
+                    if (node.device) {
+                        var savedLabel = node.deviceName || node.device;
+                        deviceSelect.append(
+                            $('<option></option>').val(node.device).text(savedLabel + ' (not loaded)')
+                        );
+                    } else {
+                        deviceSelect.append('<option value="">-- No devices found --</option>');
+                    }
+                    return;
+                }
+
+                deviceSelect.append('<option value="">-- Select device --</option>');
+                devices.forEach(function(d) {
+                    var label = d.name + (d.model ? ' (' + d.model + ')' : '');
+                    var option = $('<option></option>')
+                        .val(d.id)
+                        .text(label)
+                        .data('name', d.name);
+                    if (d.id === node.device) {
+                        option.prop('selected', true);
+                    }
+                    deviceSelect.append(option);
+                });
+            }
+
             function loadDevices() {
                 var accountId = $('#node-input-account').val();
                 if (!accountId) {
@@ -27,30 +58,32 @@
                     return;
                 }
 
-                deviceSelect.empty().append('<option value="">Loading...</option>');
+                // While loading: preserve saved device as placeholder
+                deviceSelect.empty();
+                if (node.device) {
+                    var loadingLabel = (node.deviceName || node.device) + ' (loading...)';
+                    deviceSelect.append($('<option></option>').val(node.device).text(loadingLabel));
+                } else {
+                    deviceSelect.append('<option value="">Loading...</option>');
+                }
 
                 $.getJSON('philips-airplus/devices?account=' + accountId, function(devices) {
-                    deviceSelect.empty();
-
-                    if (devices.length === 0) {
-                        deviceSelect.append('<option value="">-- No devices found --</option>');
+                    if (devices.length === 0 && !retried) {
+                        retried = true;
+                        setTimeout(function() { loadDevices(); }, 3000);
                         return;
                     }
-
-                    deviceSelect.append('<option value="">-- Select device --</option>');
-                    devices.forEach(function(d) {
-                        var label = d.name + (d.model ? ' (' + d.model + ')' : '');
-                        var option = $('<option></option>')
-                            .val(d.id)
-                            .text(label)
-                            .data('name', d.name);
-                        if (d.id === node.device) {
-                            option.prop('selected', true);
-                        }
-                        deviceSelect.append(option);
-                    });
+                    populateDevices(devices);
                 }).fail(function() {
-                    deviceSelect.empty().append('<option value="">-- Failed to load --</option>');
+                    if (node.device) {
+                        var failLabel = (node.deviceName || node.device) + ' (not loaded)';
+                        deviceSelect.empty();
+                        deviceSelect.append(
+                            $('<option></option>').val(node.device).text(failLabel)
+                        );
+                    } else {
+                        deviceSelect.empty().append('<option value="">-- Failed to load --</option>');
+                    }
                 });
             }
 

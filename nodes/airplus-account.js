@@ -37,6 +37,7 @@ module.exports = function (RED) {
     let statusCallbacks = new Map(); // deviceId -> Set of callbacks
     let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
     let tokenRevoked = false;
+    let ready = false;
 
     // Get API client singleton
     function getApiClient() {
@@ -409,6 +410,10 @@ module.exports = function (RED) {
       return deviceStatus.get(deviceId) || null;
     };
 
+    node.isReady = function () {
+      return ready;
+    };
+
     node.isConnected = function (deviceId) {
       if (deviceId) {
         const client = mqttClients.get(deviceId);
@@ -476,6 +481,8 @@ module.exports = function (RED) {
         node.log('Not authenticated, skipping initialization');
         updateStatus();
         node.emit('auth-failed', tokenRevoked ? 'token revoked' : 'not authenticated');
+        ready = true;
+        node.emit('ready');
         return;
       }
 
@@ -495,6 +502,9 @@ module.exports = function (RED) {
         node.error(`Initialization failed: ${err.message}`);
         node.error(err.stack);
         updateStatus();
+      } finally {
+        ready = true;
+        node.emit('ready');
       }
     }
 
