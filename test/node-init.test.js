@@ -102,7 +102,7 @@ describe('airplus-status node init', () => {
 
   test('inits immediately if account already ready and connected', () => {
     const account = createMockAccountNode({ ready: true, connected: true });
-    const node = createStatusNode(account);
+    createStatusNode(account);
 
     // Should have subscribed immediately
     expect(account.subscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
@@ -251,7 +251,7 @@ describe('node loading order scenarios', () => {
 
   test('ready fires with isConnected=true subscribes immediately', () => {
     const account = createMockAccountNode({ ready: false, connected: false });
-    const node = createStatusNode(account);
+    createStatusNode(account);
 
     // account becomes connected before emitting ready
     account.isConnected.mockReturnValue(true);

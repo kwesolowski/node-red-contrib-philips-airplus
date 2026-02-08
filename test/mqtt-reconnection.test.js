@@ -16,7 +16,7 @@ class MockMqttClient extends EventEmitter {
     this.connected = false;
   }
 
-  subscribe(topic, opts) {
+  subscribe(topic, _opts) {
     this.subscriptions.push(topic);
   }
 
@@ -28,7 +28,7 @@ class MockMqttClient extends EventEmitter {
     this.published.push({ topic, payload, opts });
   }
 
-  end(force) {
+  end(_force) {
     this.ended = true;
     this.connected = false;
     setTimeout(() => this.emit('close'), 5);
@@ -55,7 +55,7 @@ class MockMqttLib {
     this.clients = [];
   }
 
-  connect(url, opts) {
+  connect(_url, _opts) {
     const client = new MockMqttClient();
     this.clients.push(client);
     return client;
@@ -357,8 +357,6 @@ describe('MQTT Reconnection Logic', () => {
   describe('Connection Timeout Handling', () => {
     it('should handle connection timeout errors', async () => {
       const onError = jest.fn();
-      let connectionAttempts = 0;
-
       client = createMqttClient({
         getMqttInfo: async () => mqttInfo,
         onError,

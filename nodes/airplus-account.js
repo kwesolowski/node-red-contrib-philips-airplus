@@ -621,7 +621,7 @@ module.exports = function (RED) {
           encoding: 'utf8',
           timeout: 1000,
         }).trim();
-      } catch (e) {
+      } catch (_e) {
         // Ignore git errors (not a git repo or git not installed)
       }
       res.json({
