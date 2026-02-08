@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Set pending status
+        if: github.event_name == 'push'
+        run: |
+          gh api repos/${{ github.repository }}/statuses/${{ github.sha }} \
+            -f state=pending \
+            -f context=ci/tests \
+            -f description="CI running" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      - name: Set success status
+        if: success() && github.event_name == 'push'
+        run: |
+          gh api repos/${{ github.repository }}/statuses/${{ github.sha }} \
+            -f state=success \
+            -f context=ci/tests \
+            -f description="All checks passed" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Set failure status
+        if: failure() && github.event_name == 'push'
+        run: |
+          gh api repos/${{ github.repository }}/statuses/${{ github.sha }} \
+            -f state=failure \
+            -f context=ci/tests \
+            -f description="Checks failed" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

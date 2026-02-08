@@ -1,3 +1,5 @@
+[![CI](https://github.com/kwesolowski/node-red-contrib-philips-airplus/actions/workflows/ci.yml/badge.svg)](https://github.com/kwesolowski/node-red-contrib-philips-airplus/actions/workflows/ci.yml)
+
 # node-red-contrib-philips-airplus
 
 Node-RED nodes for Philips Air+ purifiers and humidifiers via cloud API.
@@ -155,16 +157,19 @@ See [`examples/control-test.json`](examples/control-test.json) for a complete te
 - **Green dot** - Connected and operating normally
 
 **When to intervene:**
+
 - **Red ring "authentication required"** - OAuth refresh token expired, re-authenticate using "Get Auth URL" in config node
 - **Failing for >15 minutes** - Check internet connectivity, Philips cloud status, or device online status in Philips app
 
 **Logs include temporal context:**
+
 - Time since first failure
 - Time since last successful connection
 - Reconnection attempt number
 - Auto-retry status
 
 Example warning (auto-recoverable):
+
 ```
 MQTT Bedroom: MQTT connection timeout (attempt 3/10), failing for 45s, last connected 120s ago - auto-retry enabled
 ```
