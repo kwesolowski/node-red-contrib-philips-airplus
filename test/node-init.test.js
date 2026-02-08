@@ -202,6 +202,241 @@ describe('airplus-control node init', () => {
   });
 });
 
+describe('node loading order scenarios', () => {
+  let RED;
+
+  beforeEach(() => {
+    RED = createMockRED();
+    require('../nodes/airplus-status')(RED);
+  });
+
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  function createStatusNode(accountNode, config = {}) {
+    RED._nodes.set('account-1', accountNode);
+    const NodeConstructor = RED.nodes.registerType.mock.calls[0][1];
+    const node = {};
+    RED.nodes.createNode(node, { id: `status-${Math.random()}`, ...config });
+    NodeConstructor.call(node, {
+      account: 'account-1',
+      device: config.device || 'device-abc',
+      deviceName: config.deviceName || 'Test Device',
+      ...config,
+    });
+    return node;
+  }
+
+  test('connected before ready is ignored, subscribe happens after ready+connected', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    const node = createStatusNode(account);
+
+    // connected fires before ready — child hasn't registered listener yet
+    account.emit('connected', 'device-abc');
+    expect(account.subscribe).not.toHaveBeenCalled();
+
+    // ready fires, but isConnected is still false
+    account.emit('ready');
+    expect(account.subscribe).not.toHaveBeenCalled();
+    expect(node.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow', text: 'waiting for connection...' })
+    );
+
+    // now connected fires again — this time the listener is registered
+    account.isConnected.mockReturnValue(true);
+    account.emit('connected', 'device-abc');
+    expect(account.subscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
+  });
+
+  test('ready fires with isConnected=true subscribes immediately', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    const node = createStatusNode(account);
+
+    // account becomes connected before emitting ready
+    account.isConnected.mockReturnValue(true);
+    account.emit('ready');
+
+    expect(account.subscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
+  });
+
+  test('connected event for wrong device does not trigger subscribe', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    createStatusNode(account, { device: 'device-abc' });
+
+    account.emit('ready');
+    account.emit('connected', 'device-OTHER');
+
+    expect(account.subscribe).not.toHaveBeenCalled();
+  });
+
+  test('disconnected before ready is ignored (no listener registered)', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    const node = createStatusNode(account);
+
+    account.emit('disconnected', 'device-abc');
+
+    // Status should still be initializing, not "disconnected"
+    const statusCalls = node.status.mock.calls.map(c => c[0].text);
+    expect(statusCalls).not.toContain('disconnected');
+  });
+
+  test('multiple child nodes all init when single ready fires', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    const node1 = createStatusNode(account, { device: 'device-1' });
+    const node2 = createStatusNode(account, { device: 'device-2' });
+
+    // Both should be in initializing state
+    expect(node1.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'grey', text: 'initializing...' })
+    );
+    expect(node2.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'grey', text: 'initializing...' })
+    );
+
+    // Single ready event
+    account.emit('ready');
+
+    // Both should transition to waiting for connection
+    expect(node1.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow', text: 'waiting for connection...' })
+    );
+    expect(node2.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow', text: 'waiting for connection...' })
+    );
+  });
+
+  test('child node constructed after ready inits synchronously', () => {
+    const account = createMockAccountNode({ ready: true, connected: true });
+    const node = createStatusNode(account);
+
+    // isReady()=true at construction time — no waiting
+    expect(account.subscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
+    // Should never have shown initializing (overwritten immediately by subscribe logic)
+    const lastStatus = node.status.mock.calls[node.status.mock.calls.length - 1][0];
+    expect(lastStatus.text).not.toBe('initializing...');
+  });
+
+  test('ready then connected then disconnected shows correct status progression', () => {
+    const account = createMockAccountNode({ ready: false, connected: false });
+    const node = createStatusNode(account);
+
+    // Phase 1: ready, not connected
+    account.emit('ready');
+    expect(node.status).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow', text: 'waiting for connection...' })
+    );
+
+    // Phase 2: connected
+    account.isConnected.mockReturnValue(true);
+    account.subscribe.mockReturnValue({ power: true, pm25: 12 });
+    account.emit('connected', 'device-abc');
+    expect(account.subscribe).toHaveBeenCalled();
+
+    // Phase 3: disconnected
+    account.isConnected.mockReturnValue(false);
+    account.emit('disconnected', 'device-abc');
+    // Should show stale data in yellow (updateNodeStatus with lastStatus)
+    const lastCall = node.status.mock.calls[node.status.mock.calls.length - 1][0];
+    expect(lastCall.fill).toBe('yellow');
+    expect(lastCall.shape).toBe('ring');
+  });
+});
+
+describe('partial flow redeploy (child node recreated, account stays)', () => {
+  let RED;
+
+  beforeEach(() => {
+    RED = createMockRED();
+    require('../nodes/airplus-status')(RED);
+  });
+
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  function createStatusNode(accountNode, config = {}) {
+    RED._nodes.set('account-1', accountNode);
+    const NodeConstructor = RED.nodes.registerType.mock.calls[0][1];
+    const node = {};
+    RED.nodes.createNode(node, { id: `status-${Math.random()}`, ...config });
+    NodeConstructor.call(node, {
+      account: 'account-1',
+      device: config.device || 'device-abc',
+      deviceName: config.deviceName || 'Test Device',
+      ...config,
+    });
+    return node;
+  }
+
+  function triggerClose(node) {
+    const closeHandler = node.on.mock.calls.find(c => c[0] === 'close');
+    if (closeHandler) {
+      closeHandler[1](() => {});
+    }
+  }
+
+  test('recreated node subscribes immediately when account already ready+connected', () => {
+    const account = createMockAccountNode({ ready: true, connected: true });
+
+    // First instance
+    const node1 = createStatusNode(account);
+    expect(account.subscribe).toHaveBeenCalledTimes(1);
+
+    // Simulate close (partial redeploy)
+    triggerClose(node1);
+    expect(account.unsubscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
+
+    // Second instance — account is still ready and connected
+    account.subscribe.mockClear();
+    const node2 = createStatusNode(account);
+    expect(account.subscribe).toHaveBeenCalledWith('device-abc', expect.any(Function));
+
+    // No leftover listeners from node1 affecting node2
+    expect(node2.error).not.toHaveBeenCalled();
+  });
+
+  test('close removes all listeners from account node', () => {
+    const account = createMockAccountNode({ ready: true, connected: true });
+    const node = createStatusNode(account);
+
+    const listenersBefore = {
+      connected: account.listenerCount('connected'),
+      disconnected: account.listenerCount('disconnected'),
+      authFailed: account.listenerCount('auth-failed'),
+    };
+
+    triggerClose(node);
+
+    expect(account.listenerCount('connected')).toBe(listenersBefore.connected - 1);
+    expect(account.listenerCount('disconnected')).toBe(listenersBefore.disconnected - 1);
+    expect(account.listenerCount('auth-failed')).toBe(listenersBefore.authFailed - 1);
+  });
+
+  test('close removes ready listener if account was not yet ready', () => {
+    const account = createMockAccountNode({ ready: false });
+    const node = createStatusNode(account);
+
+    const readyBefore = account.listenerCount('ready');
+    expect(readyBefore).toBe(1);
+
+    triggerClose(node);
+
+    expect(account.listenerCount('ready')).toBe(0);
+  });
+
+  test('close during pending ready does not init after close', () => {
+    const account = createMockAccountNode({ ready: false });
+    const node = createStatusNode(account);
+
+    triggerClose(node);
+
+    // Ready fires after close — should not cause subscribe
+    account.emit('ready');
+    expect(account.subscribe).not.toHaveBeenCalled();
+  });
+});
+
 describe('airplus-account ready event', () => {
   test('emits ready after successful init', async () => {
     // We test the pattern: initialize() sets ready=true and emits 'ready'
