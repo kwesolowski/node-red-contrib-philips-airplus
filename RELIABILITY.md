@@ -35,17 +35,20 @@ Only log ERROR when user action is genuinely needed:
 ## Logging Strategy
 
 ### log() - Normal Operations
+
 - Connection established
 - Credential refresh triggered
 - Device state changes received
 - Subscriptions added/removed
 
 ### warn() - Transient Issues (Auto-Recoverable)
+
 - MQTT disconnected (will auto-reconnect)
 - Connection attempt failed (will retry)
 - Circuit breaker half-open (testing connection)
 
 ### error() - Requires Action
+
 - OAuth refresh token expired → "Re-authenticate required: Click 'Get Auth URL' in config node"
 - Persistent connection failure after circuit breaker opens → "Unable to reach AWS IoT after multiple attempts. Check internet connectivity and Philips cloud status."
 - Invalid device ID in API response → "Device configuration issue, contact support"
@@ -60,6 +63,7 @@ Only log ERROR when user action is genuinely needed:
 **Red ring**: Action required (see error log)
 
 Status text shows:
+
 - Connected: `connected (3 devices)`
 - Connecting: `connecting... (attempt 2/10)`
 - Circuit breaker: `backing off (retry in 3m)`
@@ -68,6 +72,7 @@ Status text shows:
 ### Debug Output (when enabled)
 
 Enable verbose logging in account config for troubleshooting:
+
 - MQTT topic subscriptions
 - Shadow message payloads
 - Reconnection timing
@@ -80,6 +85,7 @@ Enable verbose logging in account config for troubleshooting:
 - **Half-open** (testing): Attempt one connection to test if service recovered
 
 Circuit breaker prevents:
+
 - Hammering AWS IoT during outages
 - Log spam during extended unavailability
 - Battery drain on Pi during network issues
@@ -87,6 +93,7 @@ Circuit breaker prevents:
 ## Metrics for Monitoring
 
 For production deployment, consider tracking:
+
 - Connection uptime %
 - Reconnection frequency
 - Circuit breaker trips
@@ -125,6 +132,7 @@ Transient failures are expected. Only the final state matters: did we recover? L
 
 **Why separate credentials file?**
 Node-RED credentials are stored in flows_cred.json (git-ignored). CLI credentials file (`~/.philips-airplus/credentials.json`) allows:
+
 - Reusing auth across Node-RED restarts
 - CLI tool access (status checks, control commands)
 - Cross-machine credential transfer (export/import)

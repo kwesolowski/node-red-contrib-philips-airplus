@@ -16,17 +16,17 @@ When Air+ device pushes sensor updates via MQTT, airplus-status emits:
       "DeviceId": "99d5086d8f9f11eeb22913de1077e90c",
       "StatusType": "status",
       "ConnectType": "Online",
-      "D03102": 1,           // Power: 1=on
-      "D03103": 0,           // Child lock: 0=off
-      "D03105": 100,         // Display brightness: 100%
-      "D0310C": 0,           // Mode: 0=auto
-      "D03120": 1,           // Air quality index: 1 (excellent)
-      "D03221": 1,           // PM2.5: 1 µg/m³ ✅
-      "D03224": 253,         // Temperature: 253 (÷10 = 25.3°C) ✅
-      "D03125": 34,          // Humidity: 34% ✅
-      "D03128": 40,          // Target humidity: 40%
+      "D03102": 1, // Power: 1=on
+      "D03103": 0, // Child lock: 0=off
+      "D03105": 100, // Display brightness: 100%
+      "D0310C": 0, // Mode: 0=auto
+      "D03120": 1, // Air quality index: 1 (excellent)
+      "D03221": 1, // PM2.5: 1 µg/m³ ✅
+      "D03224": 253, // Temperature: 253 (÷10 = 25.3°C) ✅
+      "D03125": 34, // Humidity: 34% ✅
+      "D03128": 40, // Target humidity: 40%
       "D05102": 3,
-      "D0540E": 2928,        // Filter remaining hours
+      "D0540E": 2928, // Filter remaining hours
       "rssi": -71,
       "free_memory": 60408,
       "Runtime": 720866219
@@ -34,9 +34,9 @@ When Air+ device pushes sensor updates via MQTT, airplus-status emits:
     "power": true,
     "modeRaw": 0,
     "mode": "auto",
-    "pm25": 1,               // ✅ Parsed from D03221
-    "humidity": 34,          // ✅ Parsed from D03125
-    "temperature": 25,       // ✅ Parsed from D03224 (rounded)
+    "pm25": 1, // ✅ Parsed from D03221
+    "humidity": 34, // ✅ Parsed from D03125
+    "temperature": 25, // ✅ Parsed from D03224 (rounded)
     "airQualityIndex": 1,
     "targetHumidity": 40,
     "childLock": false,
@@ -60,14 +60,14 @@ When Air+ device pushes sensor updates via MQTT, airplus-status emits:
 
 The `payload` object contains parsed sensor fields:
 
-| Field | Type | Example | Source | Notes |
-|-------|------|---------|--------|-------|
-| `temperature` | number | `25` | `D03224 ÷ 10` | Rounded to integer |
-| `humidity` | number | `34` | `D03125` | Percentage 0-100 |
-| `pm25` | number | `1` | `D03221` | Particulate matter µg/m³ |
-| `airQualityIndex` | number | `1` | `D03120` | 0-12 scale |
-| `power` | boolean | `true` | `D03102` | Device on/off |
-| `mode` | string | `"auto"` | `D0310C` | auto/sleep/turbo/manual |
+| Field             | Type    | Example  | Source        | Notes                    |
+| ----------------- | ------- | -------- | ------------- | ------------------------ |
+| `temperature`     | number  | `25`     | `D03224 ÷ 10` | Rounded to integer       |
+| `humidity`        | number  | `34`     | `D03125`      | Percentage 0-100         |
+| `pm25`            | number  | `1`      | `D03221`      | Particulate matter µg/m³ |
+| `airQualityIndex` | number  | `1`      | `D03120`      | 0-12 scale               |
+| `power`           | boolean | `true`   | `D03102`      | Device on/off            |
+| `mode`            | string  | `"auto"` | `D0310C`      | auto/sleep/turbo/manual  |
 
 ## Update Types
 
@@ -115,13 +115,13 @@ airplus-influx-logger only processes messages with sensor data:
 ```typescript
 const updateType = msg.updateType || 'unknown';
 if (updateType !== 'reported' && updateType !== 'delta') {
-    // Skip 'initial' without sensor data
-    return;
+  // Skip 'initial' without sensor data
+  return;
 }
 
 if (!msg.payload.temperature && !msg.payload.humidity && !msg.payload.pm25) {
-    node.warn('No environmental metrics in payload');
-    return;
+  node.warn('No environmental metrics in payload');
+  return;
 }
 ```
 

@@ -150,9 +150,7 @@ async function authenticate() {
   try {
     ({ chromium } = require('playwright'));
   } catch {
-    throw new Error(
-      'Playwright is required. Install with: npm install playwright'
-    );
+    throw new Error('Playwright is required. Install with: npm install playwright');
   }
 
   const { verifier, challenge } = generatePkce();
