@@ -11,7 +11,11 @@ const { refreshTokens, extractUserId, isTokenRevoked } = require('../lib/oauth')
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
 const { parseShadow, mergeStatus } = require('../lib/parser');
-const { TOKEN_REFRESH_BUFFER_MS } = require('../lib/constants');
+const {
+  TOKEN_REFRESH_BUFFER_MS,
+  CONNECT_RETRY_MIN_MS,
+  CONNECT_RETRY_MAX_MS,
+} = require('../lib/constants');
 
 // CLI credentials file location
 const CREDENTIALS_FILE = path.join(os.homedir(), '.philips-airplus', 'credentials.json');
@@ -34,6 +38,9 @@ module.exports = function (RED) {
     let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
     let tokenRevoked = false;
     let ready = false;
+    let connectRetryTimer = null;
+    let closed = false; // set on close; an in-flight fetch must not connect or reschedule after it
+    let connectRetryDelayMs = CONNECT_RETRY_MIN_MS;
 
     // Get API client singleton
     function getApiClient() {
@@ -483,34 +490,63 @@ module.exports = function (RED) {
       }
 
       try {
-        node.log('Fetching devices...');
-        await fetchDevices();
-        node.log(`Fetched ${deviceCache.length} device(s)`);
-
-        if (deviceCache.length > 0) {
-          node.log('Connecting to MQTT...');
-          await connectMqtt();
-        } else {
-          node.log('No devices found, skipping MQTT connection');
-        }
-        updateStatus();
-      } catch (err) {
-        node.error(`Initialization failed: ${err.message}`);
-        node.error(err.stack);
-        updateStatus();
+        await fetchDevicesAndConnect();
       } finally {
         ready = true;
         node.emit('ready');
       }
     }
 
+    // Fetch devices and connect MQTT. On failure (e.g. network not up at boot), retry with
+    // backoff: without a device list there are no MQTT clients and no auto-reconnect.
+    async function fetchDevicesAndConnect() {
+      connectRetryTimer = null;
+      try {
+        node.log('Fetching devices...');
+        await fetchDevices();
+        if (closed) return;
+        node.log(`Fetched ${deviceCache.length} device(s)`);
+
+        if (deviceCache.length > 0) {
+          node.log('Connecting to MQTT...');
+          await connectMqtt();
+          if (closed) {
+            disconnectAll();
+            return;
+          }
+        } else {
+          node.log('No devices found, skipping MQTT connection');
+        }
+        connectRetryDelayMs = CONNECT_RETRY_MIN_MS;
+      } catch (err) {
+        if (closed) return;
+        const cause = err.cause ? ` (cause: ${err.cause.code || err.cause.message})` : '';
+        if (tokenRevoked) {
+          // Needs re-authentication; retrying cannot help
+          node.error(`Initialization failed: ${err.message}${cause}`);
+        } else {
+          const delayS = Math.round(connectRetryDelayMs / 1000);
+          node.error(`Initialization failed: ${err.message}${cause}, retrying in ${delayS}s`);
+          connectRetryTimer = setTimeout(fetchDevicesAndConnect, connectRetryDelayMs);
+          connectRetryDelayMs = Math.min(connectRetryDelayMs * 2, CONNECT_RETRY_MAX_MS);
+        }
+      }
+      updateStatus();
+    }
+
     // Cleanup on close
-    node.on('close', function (done) {
+    function disconnectAll() {
       for (const [deviceId, client] of mqttClients) {
         node.log(`Disconnecting client for ${deviceId}`);
         client.disconnect();
       }
       mqttClients.clear();
+    }
+
+    node.on('close', function (done) {
+      closed = true;
+      if (connectRetryTimer) clearTimeout(connectRetryTimer);
+      disconnectAll();
       deviceCache = [];
       deviceStatus.clear();
       statusCallbacks.clear();
