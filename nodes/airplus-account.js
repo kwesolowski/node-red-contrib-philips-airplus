@@ -10,10 +10,12 @@ const { execSync } = require('child_process');
 const { refreshTokens, extractUserId, isTokenRevoked } = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
-const { parseShadow, mergeStatus } = require('../lib/parser');
+const { parseShadow, parseReportedAt, mergeStatus } = require('../lib/parser');
 const {
   TOKEN_REFRESH_BUFFER_MS,
   CONNECT_RETRY_MIN_MS,
+  STATE_POLL_INTERVAL_MS,
+  STATE_POLL_JITTER_MS,
   CONNECT_RETRY_MAX_MS,
 } = require('../lib/constants');
 
@@ -34,6 +36,8 @@ module.exports = function (RED) {
     let tokenSet = null; // openid-client TokenSet
     let deviceCache = [];
     let deviceStatus = new Map(); // deviceId -> status
+    const deviceReportedAt = new Map(); // deviceId -> { metric: epoch ms the device reported it }
+    const pollTimers = new Map(); // deviceId -> timer for the next periodic shadow get
     let statusCallbacks = new Map(); // deviceId -> Set of callbacks
     const lastShadows = new Map(); // deviceId -> { topic -> { receivedAt, message } }
     let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
@@ -204,6 +208,8 @@ module.exports = function (RED) {
           onConnect: () => {
             node.log(`MQTT connected: ${deviceName}`);
             reconnectionState = null; // Clear reconnection state on success
+            // The client reconnects every 50 min for fresh credentials; keep the running poll
+            if (!pollTimers.has(deviceId)) schedulePoll(deviceId, deviceName);
             updateStatus();
             // Emit event for this device's connection
             node.emit('connected', deviceId);
@@ -268,7 +274,32 @@ module.exports = function (RED) {
       node.log(`MQTT connections established for ${mqttClients.size} device(s)`);
     }
 
-    function handleStateChange(deviceId, state, type) {
+    function schedulePoll(deviceId, deviceName) {
+      cancelPoll(deviceId);
+      const delayMs = STATE_POLL_INTERVAL_MS + (Math.random() * 2 - 1) * STATE_POLL_JITTER_MS;
+      const timer = setTimeout(async () => {
+        pollTimers.delete(deviceId);
+        const client = mqttClients.get(deviceId);
+        if (!client) return;
+        // Skip while disconnected or while no status node listens (its topics are unsubscribed)
+        if (client.isConnected() && statusCallbacks.has(deviceId)) {
+          try {
+            await client.getDeviceState(deviceId);
+          } catch (err) {
+            node.warn(`Periodic state request for ${deviceName} failed: ${err.message}`);
+          }
+        }
+        if (!closed) schedulePoll(deviceId, deviceName);
+      }, delayMs);
+      pollTimers.set(deviceId, timer);
+    }
+
+    function cancelPoll(deviceId) {
+      clearTimeout(pollTimers.get(deviceId));
+      pollTimers.delete(deviceId);
+    }
+
+    function handleStateChange(deviceId, state, type, metadata) {
       // Parse state based on type
       let parsed;
       if (type === 'reported') {
@@ -286,12 +317,18 @@ module.exports = function (RED) {
       const existing = deviceStatus.get(deviceId) || {};
       const updated = mergeStatus(existing, parsed.reported || parsed);
       deviceStatus.set(deviceId, updated);
+      // Delta metadata holds desired-change times, not report times
+      const reportedAt = {
+        ...deviceReportedAt.get(deviceId),
+        ...(type === 'delta' ? {} : parseReportedAt(metadata)),
+      };
+      deviceReportedAt.set(deviceId, reportedAt);
 
       // Notify subscribers
       const callbacks = statusCallbacks.get(deviceId);
       if (callbacks) {
         for (const callback of callbacks) {
-          callback(updated, type);
+          callback(updated, type, { ...reportedAt });
         }
       }
     }
@@ -546,6 +583,7 @@ module.exports = function (RED) {
 
     // Cleanup on close
     function disconnectAll() {
+      for (const deviceId of pollTimers.keys()) cancelPoll(deviceId);
       for (const [deviceId, client] of mqttClients) {
         node.log(`Disconnecting client for ${deviceId}`);
         client.disconnect();

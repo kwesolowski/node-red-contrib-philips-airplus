@@ -43,13 +43,19 @@ describe('airplus-account last shadow', () => {
     jest.spyOn(fs, 'existsSync').mockReturnValue(false);
   });
 
-  afterEach(() => {
+  let openNode;
+
+  afterEach(async () => {
+    // Closing stops the periodic state request timer, so Jest can exit
+    if (openNode) await new Promise(resolve => openNode.emit('close', resolve));
+    openNode = null;
     jest.restoreAllMocks();
     jest.resetAllMocks();
   });
 
   test('keeps the latest message for each topic of a device', async () => {
     const { node, client } = await connectedAccount();
+    openNode = node;
     const first = { state: { reported: { D03125: 50 } }, version: 1 };
     const second = { state: { reported: { D03125: 52 } }, version: 2 };
     const update = { state: { reported: { D03125: 53 } }, version: 3 };
@@ -66,7 +72,8 @@ describe('airplus-account last shadow', () => {
   });
 
   test('the route needs the read permission and returns shadows by account id', async () => {
-    const { routes, client } = await connectedAccount();
+    const { node, routes, client } = await connectedAccount();
+    openNode = node;
     const document = { state: { reported: { D03125: 50 } } };
     client.options.onShadowMessage(DEVICE.id, GET_TOPIC, document);
 

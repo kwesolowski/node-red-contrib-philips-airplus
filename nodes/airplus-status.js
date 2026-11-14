@@ -35,7 +35,7 @@ module.exports = function (RED) {
     accountNode.on('auth-failed', onAuthFailed);
 
     // Status callback
-    function onStatusUpdate(status, type) {
+    function onStatusUpdate(status, type, reportedAt) {
       lastStatus = status;
 
       const msg = {
@@ -45,6 +45,10 @@ module.exports = function (RED) {
         topic: `${deviceId}/${type}`,
         updateType: type,
       };
+      if (reportedAt) {
+        // When the device reported each sensor value (epoch ms), from the shadow metadata
+        msg.reportedAt = reportedAt;
+      }
 
       node.send(msg);
 

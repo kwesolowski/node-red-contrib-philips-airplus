@@ -17,6 +17,7 @@ function fakeMqttClient(options) {
       connected = false;
     }),
     subscribeDevice: jest.fn(),
+    getDeviceState: jest.fn(async () => null),
     isConnected: () => connected,
   };
 }

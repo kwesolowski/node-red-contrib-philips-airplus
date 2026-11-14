@@ -275,7 +275,61 @@ describe('mqtt', () => {
         state: { powerOn: true },
       });
 
-      expect(onStateChange).toHaveBeenCalledWith('dev-123', { powerOn: true }, 'delta');
+      expect(onStateChange).toHaveBeenCalledWith('dev-123', { powerOn: true }, 'delta', {});
+    });
+
+    async function connectedWithStateCallback(onStateChange) {
+      client = createMqttClient({
+        getMqttInfo: () =>
+          Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c', device_id: 'dev-123' }),
+        onStateChange,
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+      const connectPromise = client.connect();
+      setTimeout(() => mockMqttLib.getLastClient().simulateConnect(), 10);
+      await connectPromise;
+      client.subscribeDevice('dev-123');
+      return mockMqttLib.getLastClient();
+    }
+
+    it('passes a device report on shadow/update/accepted to onStateChange with its metadata', async () => {
+      const onStateChange = jest.fn();
+      const mqttClient = await connectedWithStateCallback(onStateChange);
+
+      mqttClient.simulateMessage('$aws/things/dev-123/shadow/update/accepted', {
+        state: { reported: { D03125: 56 } },
+        metadata: { reported: { D03125: { timestamp: 1794698058 } } },
+      });
+
+      expect(onStateChange).toHaveBeenCalledWith('dev-123', { D03125: 56 }, 'reported', {
+        D03125: { timestamp: 1794698058 },
+      });
+    });
+
+    it('does not pass a desired-only shadow/update/accepted to onStateChange', async () => {
+      const onStateChange = jest.fn();
+      const mqttClient = await connectedWithStateCallback(onStateChange);
+
+      mqttClient.simulateMessage('$aws/things/dev-123/shadow/update/accepted', {
+        state: { desired: { D03102: 0 } },
+      });
+
+      expect(onStateChange).not.toHaveBeenCalled();
+    });
+
+    it('passes shadow/get/accepted metadata to onStateChange', async () => {
+      const onStateChange = jest.fn();
+      const mqttClient = await connectedWithStateCallback(onStateChange);
+
+      mqttClient.simulateMessage('$aws/things/dev-123/shadow/get/accepted', {
+        state: { reported: { D03125: 59 } },
+        metadata: { reported: { D03125: { timestamp: 1760896604 } } },
+      });
+
+      expect(onStateChange).toHaveBeenCalledWith('dev-123', { D03125: 59 }, 'reported', {
+        D03125: { timestamp: 1760896604 },
+      });
     });
 
     it('passes every parsed shadow message to onShadowMessage, whole', async () => {

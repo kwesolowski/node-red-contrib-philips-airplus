@@ -6,6 +6,7 @@
 const {
   parseShadow,
   parseReportedState,
+  parseReportedAt,
   buildDesiredState,
   mergeStatus,
 } = require('../lib/parser');
@@ -165,6 +166,27 @@ describe('parser', () => {
       const props = { D03102: 1, unknown: 'value' };
       const result = parseReportedState(props);
       expect(result.raw).toBe(props);
+    });
+  });
+
+  describe('parseReportedAt', () => {
+    it('maps sensor DID timestamps (seconds) to metric names in ms', () => {
+      const metadata = {
+        D03125: { timestamp: 1794698058 },
+        D03224: { timestamp: 1794698058 },
+        D03221: { timestamp: 1794697738 },
+        D03102: { timestamp: 1794690000 },
+      };
+      expect(parseReportedAt(metadata)).toEqual({
+        humidity: 1794698058000,
+        temperature: 1794698058000,
+        pm25: 1794697738000,
+      });
+    });
+
+    it('leaves out metrics without metadata', () => {
+      expect(parseReportedAt({ D03125: { timestamp: 1 } })).toEqual({ humidity: 1000 });
+      expect(parseReportedAt(undefined)).toEqual({});
     });
   });
 

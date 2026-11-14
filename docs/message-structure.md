@@ -52,9 +52,20 @@ When Air+ device pushes sensor updates via MQTT, airplus-status emits:
   "deviceName": "Bedroom",
   "topic": "99d5086d8f9f11eeb22913de1077e90c/reported",
   "updateType": "reported",
+  "reportedAt": {
+    "pm25": 1768153032000,
+    "humidity": 1768153032000,
+    "temperature": 1768153032000
+  },
   "_msgid": "62b875206beb5256"
 }
 ```
+
+`reportedAt` holds, per sensor field, when the device last reported that value (epoch ms). It comes
+from the shadow's `metadata.reported.<DID>.timestamp`. A device that stopped reporting keeps its
+old values in the shadow; `reportedAt` shows how old they are. It is merged across messages, like
+`payload`, and is absent on `initial` messages. `delta` messages carry the last known report times
+unchanged, because delta metadata holds desired-change times.
 
 ## Key Fields for InfluxDB Logging
 
@@ -77,9 +88,14 @@ airplus-status emits different `updateType` values based on AWS IoT shadow event
 
 Device pushes complete state to AWS IoT shadow (includes sensor readings).
 
-**When**: Device sends periodic updates or state changes
+**When**: A shadow get is answered (`shadow/get/accepted`), or the device publishes a report
+(`shadow/update/accepted`). An online AC3737 answers a get with a fresh report within 1-2 s.
 **Payload**: ✅ **Contains sensor fields** (pm25, humidity, temperature)
-**Frequency**: Variable, depends on device firmware
+**Frequency**: The account node requests state for each device every 60 min +/- 15 min while a
+status node listens to it and MQTT is connected. Reports the device sends on its own were more than
+13 min apart in our measurement.
+**Repeats**: Each get gives two `reported` messages: the stored shadow (values can be old) and then
+the device's fresh report. Compare `reportedAt` to tell new values from repeats.
 
 ### 2. `"delta"` - Shadow Desired vs Reported Diff
 
