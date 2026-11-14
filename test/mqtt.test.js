@@ -278,6 +278,34 @@ describe('mqtt', () => {
       expect(onStateChange).toHaveBeenCalledWith('dev-123', { powerOn: true }, 'delta');
     });
 
+    it('passes every parsed shadow message to onShadowMessage, whole', async () => {
+      const onShadowMessage = jest.fn();
+      client = createMqttClient({
+        getMqttInfo: () =>
+          Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c', device_id: 'dev-123' }),
+        onShadowMessage,
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+
+      const connectPromise = client.connect();
+      setTimeout(() => mockMqttLib.getLastClient().simulateConnect(), 10);
+      await connectPromise;
+      client.subscribeDevice('dev-123');
+
+      const longReported = { D03125: 45, filler: 'x'.repeat(1000) };
+      const document = { state: { reported: longReported }, metadata: { reported: {} } };
+      mockMqttLib
+        .getLastClient()
+        .simulateMessage('$aws/things/dev-123/shadow/update/accepted', document);
+
+      expect(onShadowMessage).toHaveBeenCalledWith(
+        'dev-123',
+        '$aws/things/dev-123/shadow/update/accepted',
+        document
+      );
+    });
+
     it('rejects request on shadow/get/rejected', async () => {
       client = createMqttClient({
         getMqttInfo: () =>

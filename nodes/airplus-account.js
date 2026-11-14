@@ -35,6 +35,7 @@ module.exports = function (RED) {
     let deviceCache = [];
     let deviceStatus = new Map(); // deviceId -> status
     let statusCallbacks = new Map(); // deviceId -> Set of callbacks
+    const lastShadows = new Map(); // deviceId -> { topic -> { receivedAt, message } }
     let reconnectionState = null; // { attempts: number, nextRetryAt: number, circuitBreakerOpen: boolean }
     let tokenRevoked = false;
     let ready = false;
@@ -195,6 +196,11 @@ module.exports = function (RED) {
         const mqttClient = createMqttClient({
           getMqttInfo: async () => mqttInfo,
           onStateChange: handleStateChange,
+          onShadowMessage: (shadowDeviceId, topic, message) => {
+            const byTopic = lastShadows.get(shadowDeviceId) || {};
+            byTopic[topic] = { receivedAt: new Date().toISOString(), message };
+            lastShadows.set(shadowDeviceId, byTopic);
+          },
           onConnect: () => {
             node.log(`MQTT connected: ${deviceName}`);
             reconnectionState = null; // Clear reconnection state on success
@@ -409,6 +415,10 @@ module.exports = function (RED) {
       return deviceCache;
     };
 
+    node.getLastShadows = function () {
+      return Object.fromEntries(lastShadows);
+    };
+
     node.getDeviceStatus = function (deviceId) {
       return deviceStatus.get(deviceId) || null;
     };
@@ -580,6 +590,21 @@ module.exports = function (RED) {
     const devices = node.getDevices();
     res.json(devices.map(d => ({ id: d.id, name: d.name, model: d.model })));
   });
+
+  // Last shadow message per device and topic, for every account node (debugging aid)
+  RED.httpAdmin.get(
+    '/philips-airplus/last-shadow',
+    RED.auth.needsPermission('airplus-account.read'),
+    function (req, res) {
+      const accounts = {};
+      RED.nodes.eachNode(config => {
+        if (config.type !== 'airplus-account') return;
+        const node = RED.nodes.getNode(config.id);
+        if (node) accounts[config.id] = node.getLastShadows();
+      });
+      res.json(accounts);
+    }
+  );
 
   // Export credentials as JSON (for transfer to another instance)
   RED.httpAdmin.get('/philips-airplus/export-credentials', function (req, res) {

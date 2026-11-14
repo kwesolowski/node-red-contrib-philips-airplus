@@ -3,7 +3,6 @@
  */
 
 const fs = require('fs');
-const EventEmitter = require('events');
 
 jest.mock('../lib/api', () => ({ createApiClient: jest.fn() }));
 jest.mock('../lib/mqtt', () => ({ createMqttClient: jest.fn() }));
@@ -15,60 +14,9 @@ const { createApiClient } = require('../lib/api');
 const { createMqttClient } = require('../lib/mqtt');
 const { refreshTokens } = require('../lib/oauth');
 const { CONNECT_RETRY_MIN_MS } = require('../lib/constants');
-
-function fakeMqttClient(options) {
-  let connected = false;
-  return {
-    options,
-    connect: jest.fn(async () => {
-      connected = true;
-      options.onConnect();
-    }),
-    disconnect: jest.fn(() => {
-      connected = false;
-    }),
-    subscribeDevice: jest.fn(),
-    isConnected: () => connected,
-  };
-}
+const { fakeMqttClient, createAccountNode } = require('./helpers/account-node');
 
 const DEVICE = { id: 'dev-1', name: 'Bedroom' };
-
-function createAccountNode({ expiresAt } = {}) {
-  let NodeConstructor;
-  const RED = {
-    nodes: {
-      createNode(node, config) {
-        Object.assign(node, new EventEmitter());
-        Object.setPrototypeOf(node, EventEmitter.prototype);
-        node.id = config.id;
-        node.credentials = config.credentials;
-        node.log = jest.fn();
-        node.warn = jest.fn();
-        node.error = jest.fn();
-        node.status = jest.fn();
-      },
-      addCredentials: jest.fn(),
-      registerType: jest.fn((type, ctor) => {
-        NodeConstructor = ctor;
-      }),
-    },
-    httpAdmin: { get: jest.fn(), post: jest.fn() },
-  };
-  require('../nodes/airplus-account')(RED);
-
-  const node = {};
-  const farFuture = String(Math.floor(Date.now() / 1000) + 24 * 3600);
-  NodeConstructor.call(node, {
-    id: 'account-1',
-    credentials: {
-      userId: 'user-1',
-      refreshToken: 'refresh-1',
-      expiresAt: expiresAt ?? farFuture,
-    },
-  });
-  return node;
-}
 
 describe('airplus-account startup retry', () => {
   beforeEach(() => {
@@ -87,7 +35,7 @@ describe('airplus-account startup retry', () => {
     const listDevices = jest.fn().mockRejectedValueOnce(fetchFailed).mockResolvedValueOnce([]);
     createApiClient.mockReturnValue({ listDevices });
 
-    const node = createAccountNode();
+    const { node } = createAccountNode();
     await jest.advanceTimersByTimeAsync(0);
 
     expect(listDevices).toHaveBeenCalledTimes(1);
@@ -116,7 +64,7 @@ describe('airplus-account startup retry', () => {
     );
     createApiClient.mockReturnValue({ listDevices });
 
-    const node = createAccountNode();
+    const { node } = createAccountNode();
     await jest.advanceTimersByTimeAsync(0);
     await close(node);
     rejectFetch(new TypeError('fetch failed'));
@@ -130,7 +78,7 @@ describe('airplus-account startup retry', () => {
     const listDevices = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
     createApiClient.mockReturnValue({ listDevices });
 
-    const node = createAccountNode();
+    const { node } = createAccountNode();
     await jest.advanceTimersByTimeAsync(0);
     expect(jest.getTimerCount()).toBe(1);
 
@@ -155,7 +103,7 @@ describe('airplus-account startup retry', () => {
       getMqttInfo: jest.fn().mockResolvedValue([{ device_id: DEVICE.id }]),
     });
 
-    const node = createAccountNode();
+    const { node } = createAccountNode();
     await jest.advanceTimersByTimeAsync(0);
     expect(node.isConnected(DEVICE.id)).toBeFalsy();
 
@@ -179,7 +127,7 @@ describe('airplus-account startup retry', () => {
     const listDevices = jest.fn();
     createApiClient.mockReturnValue({ listDevices });
 
-    const node = createAccountNode({ expiresAt: '1' });
+    const { node } = createAccountNode({ expiresAt: '1' });
     await jest.advanceTimersByTimeAsync(0);
 
     expect(refreshTokens).toHaveBeenCalledTimes(1);
@@ -206,7 +154,7 @@ describe('airplus-account startup retry', () => {
       ),
     });
 
-    const node = createAccountNode();
+    const { node } = createAccountNode();
     await jest.advanceTimersByTimeAsync(0);
     await close(node);
     resolveMqttInfo([{ device_id: DEVICE.id }]);
