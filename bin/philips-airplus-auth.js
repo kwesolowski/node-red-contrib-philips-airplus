@@ -89,6 +89,23 @@ function extractUserId(tokenSet) {
 // Browser Flow (Playwright + PKCE)
 // =============================================================================
 
+/**
+ * Launch Playwright's Chromium; without it, the installed Google Chrome.
+ */
+async function launchBrowser(chromium) {
+  const options = {
+    headless: false,
+    args: ['--disable-blink-features=AutomationControlled'],
+  };
+  try {
+    return await chromium.launch(options);
+  } catch (err) {
+    if (!/Executable doesn't exist/.test(err.message)) throw err;
+    console.log('Playwright Chromium not installed, using installed Chrome.');
+    return chromium.launch({ ...options, channel: 'chrome' });
+  }
+}
+
 function generatePkce() {
   const verifier = crypto.randomBytes(32).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
@@ -162,10 +179,7 @@ async function authenticate() {
   console.log('Opening browser for login...');
   console.log('Please log in to your Philips account.\n');
 
-  const browser = await chromium.launch({
-    headless: false,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
+  const browser = await launchBrowser(chromium);
 
   const context = await browser.newContext({
     userAgent:
