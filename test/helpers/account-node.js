@@ -23,11 +23,13 @@ function fakeMqttClient(options) {
 }
 
 /**
- * @returns {{ node: object, routes: Map<string, Function[]> }} the node and the admin GET handlers by path
+ * @returns {{ node: object, routes: Map<string, Function[]>, posts: Map<string, Function[]> }}
+ *   the node and the admin GET and POST handlers by path
  */
 function createAccountNode({ expiresAt } = {}) {
   let NodeConstructor;
   const routes = new Map();
+  const posts = new Map();
   const nodes = new Map();
   const RED = {
     nodes: {
@@ -52,7 +54,7 @@ function createAccountNode({ expiresAt } = {}) {
     auth: { needsPermission: permission => ({ permission }) },
     httpAdmin: {
       get: jest.fn((path, ...handlers) => routes.set(path, handlers)),
-      post: jest.fn(),
+      post: jest.fn((path, ...handlers) => posts.set(path, handlers)),
     },
   };
   require('../../nodes/airplus-account')(RED);
@@ -67,7 +69,7 @@ function createAccountNode({ expiresAt } = {}) {
       expiresAt: expiresAt ?? farFuture,
     },
   });
-  return { node, routes };
+  return { node, routes, posts };
 }
 
 module.exports = { fakeMqttClient, createAccountNode };

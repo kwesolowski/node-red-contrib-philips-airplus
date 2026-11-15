@@ -614,7 +614,12 @@ module.exports = function (RED) {
     },
   });
 
-  RED.httpAdmin.get('/philips-airplus/devices', async function (req, res) {
+  // Admin routes need an editor login when adminAuth is on. Node-RED grants any *.read
+  // permission to read-only users, so routes that return the refresh token use WRITE.
+  const READ = RED.auth.needsPermission('airplus-account.read');
+  const WRITE = RED.auth.needsPermission('airplus-account.write');
+
+  RED.httpAdmin.get('/philips-airplus/devices', READ, async function (req, res) {
     const nodeId = req.query.account;
     if (!nodeId) {
       return res.json([]);
@@ -630,22 +635,18 @@ module.exports = function (RED) {
   });
 
   // Last shadow message per device and topic, for every account node (debugging aid)
-  RED.httpAdmin.get(
-    '/philips-airplus/last-shadow',
-    RED.auth.needsPermission('airplus-account.read'),
-    function (req, res) {
-      const accounts = {};
-      RED.nodes.eachNode(config => {
-        if (config.type !== 'airplus-account') return;
-        const node = RED.nodes.getNode(config.id);
-        if (node) accounts[config.id] = node.getLastShadows();
-      });
-      res.json(accounts);
-    }
-  );
+  RED.httpAdmin.get('/philips-airplus/last-shadow', READ, function (req, res) {
+    const accounts = {};
+    RED.nodes.eachNode(config => {
+      if (config.type !== 'airplus-account') return;
+      const node = RED.nodes.getNode(config.id);
+      if (node) accounts[config.id] = node.getLastShadows();
+    });
+    res.json(accounts);
+  });
 
   // Export credentials as JSON (for transfer to another instance)
-  RED.httpAdmin.get('/philips-airplus/export-credentials', function (req, res) {
+  RED.httpAdmin.get('/philips-airplus/export-credentials', WRITE, function (req, res) {
     try {
       if (fs.existsSync(CREDENTIALS_FILE)) {
         const data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
@@ -659,7 +660,7 @@ module.exports = function (RED) {
   });
 
   // Clear credentials (for transfer - after exporting)
-  RED.httpAdmin.post('/philips-airplus/clear-credentials', function (req, res) {
+  RED.httpAdmin.post('/philips-airplus/clear-credentials', WRITE, function (req, res) {
     const nodeId = req.body.node;
     RED.log.info(`[airplus] Clearing credentials for node ${nodeId}`);
 
@@ -687,7 +688,7 @@ module.exports = function (RED) {
   });
 
   // Check if CLI credentials file exists
-  RED.httpAdmin.get('/philips-airplus/cli-credentials', function (req, res) {
+  RED.httpAdmin.get('/philips-airplus/cli-credentials', READ, function (req, res) {
     RED.log.debug(`[airplus] Checking CLI credentials at ${CREDENTIALS_FILE}`);
     try {
       if (fs.existsSync(CREDENTIALS_FILE)) {
@@ -710,7 +711,7 @@ module.exports = function (RED) {
   });
 
   // Get version info (package.json + git describe if available)
-  RED.httpAdmin.get('/philips-airplus/version', function (req, res) {
+  RED.httpAdmin.get('/philips-airplus/version', READ, function (req, res) {
     try {
       const packageJson = require('../package.json');
       let gitVersion = null;
@@ -733,7 +734,7 @@ module.exports = function (RED) {
   });
 
   // Import credentials from JSON (for cross-machine transfer)
-  RED.httpAdmin.post('/philips-airplus/import-credentials', function (req, res) {
+  RED.httpAdmin.post('/philips-airplus/import-credentials', WRITE, function (req, res) {
     const nodeId = req.body.node;
     const data = req.body.credentials;
 
@@ -798,7 +799,7 @@ module.exports = function (RED) {
   });
 
   // Load credentials from CLI file into node
-  RED.httpAdmin.post('/philips-airplus/load-cli-credentials', function (req, res) {
+  RED.httpAdmin.post('/philips-airplus/load-cli-credentials', WRITE, function (req, res) {
     const nodeId = req.body.node;
     RED.log.info(`[airplus] Loading CLI credentials for node ${nodeId}`);
 
