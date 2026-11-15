@@ -420,9 +420,11 @@ describe('MQTT Reconnection Logic', () => {
       await connectedClient({ onDisconnect, onStateChange });
       const oldSocket = mockMqttLib.getLastClient();
       oldSocket.end = () => {}; // AWS never closes it in time
+      oldSocket.stream = { destroy: jest.fn() };
 
       await replaceConnection();
       expect(onDisconnect).toHaveBeenCalledTimes(1);
+      expect(oldSocket.stream.destroy).toHaveBeenCalled();
 
       oldSocket.emit('close');
       oldSocket.emit(
@@ -443,6 +445,50 @@ describe('MQTT Reconnection Logic', () => {
 
       expect(log).not.toHaveBeenCalledWith('[mqtt] Close timeout, forcing disconnect');
       expect(client.isConnected()).toBe(true);
+    });
+  });
+
+  describe('Failed first connect and disconnect', () => {
+    it('a failed first connect retries for a subscribed device', async () => {
+      let fail = true;
+      client = createMqttClient({
+        getMqttInfo: async () => {
+          if (fail) throw new Error('fetch failed');
+          return mqttInfo;
+        },
+        onError: () => {},
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+      client.subscribeDevice('dev-bedroom');
+
+      await expect(client.connect()).rejects.toThrow('fetch failed');
+      fail = false;
+      await jest.advanceTimersByTimeAsync(1000);
+      mockMqttLib.getLastClient().simulateConnect();
+      await jest.advanceTimersByTimeAsync(10);
+
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it('disconnect during the MQTT info fetch opens no connection and schedules no retry', async () => {
+      let resolveInfo;
+      client = createMqttClient({
+        getMqttInfo: () => new Promise(resolve => (resolveInfo = resolve)),
+        onError: () => {},
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+      client.subscribeDevice('dev-bedroom');
+
+      const connectPromise = client.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      client.disconnect();
+      resolveInfo(mqttInfo);
+
+      await expect(connectPromise).rejects.toThrow('Disconnected');
+      await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(mockMqttLib.getAllClients()).toHaveLength(0);
     });
   });
 });

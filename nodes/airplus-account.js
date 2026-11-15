@@ -34,6 +34,7 @@ module.exports = function (RED) {
     const mqttClients = new Map(); // deviceId -> mqttClient
     let apiClient = null;
     let tokenSet = null; // openid-client TokenSet
+    let refreshInFlight = null; // Promise of the running token refresh, shared by all callers
     let deviceCache = [];
     let deviceStatus = new Map(); // deviceId -> status
     const deviceReportedAt = new Map(); // deviceId -> { metric: epoch ms the device reported it }
@@ -82,29 +83,38 @@ module.exports = function (RED) {
 
       const expiresAt = getExpiresAt();
       if (expiresAt && Date.now() >= expiresAt * 1000 - TOKEN_REFRESH_BUFFER_MS) {
-        node.log('Token expired or expiring soon, refreshing...');
-        try {
-          tokenSet = await refreshTokens(getRefreshToken());
-          updateCredentials(tokenSet);
-          node.log('Token refreshed successfully');
-        } catch (err) {
-          if (isTokenRevoked(err)) {
-            node.error(
-              'Token revoked. Re-authenticate: run airplus-auth CLI, then click "Load from CLI" in config.'
-            );
-            tokenRevoked = true;
-            node.credentials = { tokenRevoked: 'true' };
-            RED.nodes.addCredentials(node.id, { tokenRevoked: 'true' });
-            node.emit('auth-failed', 'token revoked');
-            updateStatus();
-          } else {
-            node.error(`Token refresh failed: ${err.message}`);
-          }
-          throw err;
-        }
+        // Device clients reconnect together; a second refresh with the same refresh token
+        // can fail as invalid_grant once the first one rotates it
+        refreshInFlight ??= refreshAccessToken().finally(() => {
+          refreshInFlight = null;
+        });
+        await refreshInFlight;
       }
 
       return getUserId();
+    }
+
+    async function refreshAccessToken() {
+      node.log('Token expired or expiring soon, refreshing...');
+      try {
+        tokenSet = await refreshTokens(getRefreshToken());
+        updateCredentials(tokenSet);
+        node.log('Token refreshed successfully');
+      } catch (err) {
+        if (isTokenRevoked(err)) {
+          node.error(
+            'Token revoked. Re-authenticate: run airplus-auth CLI, then click "Load from CLI" in config.'
+          );
+          tokenRevoked = true;
+          node.credentials = { tokenRevoked: 'true' };
+          RED.nodes.addCredentials(node.id, { tokenRevoked: 'true' });
+          node.emit('auth-failed', 'token revoked');
+          updateStatus();
+        } else {
+          node.error(`Token refresh failed: ${err.message}`);
+        }
+        throw err;
+      }
     }
 
     function updateCredentials(newTokenSet) {
@@ -272,9 +282,11 @@ module.exports = function (RED) {
 
         mqttClients.set(deviceId, mqttClient);
 
+        // Subscribe first: the client reconnects only while it has a subscribed device,
+        // and it subscribes the topics itself on connect
+        mqttClient.subscribeDevice(deviceId);
         try {
           await mqttClient.connect();
-          mqttClient.subscribeDevice(deviceId);
           node.log(`MQTT connected and subscribed: ${deviceName}`);
         } catch (err) {
           // Initial connection failed - will auto-retry via onError callback
