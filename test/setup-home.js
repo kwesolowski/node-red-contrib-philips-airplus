@@ -10,6 +10,8 @@ const path = require('path');
 
 module.exports = () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'airplus-test-home-'));
+  // globalTeardown runs in this same parent process and reads it to delete the dir
+  process.env.AIRPLUS_TEST_HOME = home;
   process.env.HOME = home;
   // os.homedir() reads USERPROFILE on Windows
   process.env.USERPROFILE = home;
