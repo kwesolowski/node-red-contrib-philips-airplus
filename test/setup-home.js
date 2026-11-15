@@ -9,5 +9,8 @@ const os = require('os');
 const path = require('path');
 
 module.exports = () => {
-  process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'airplus-test-home-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'airplus-test-home-'));
+  process.env.HOME = home;
+  // os.homedir() reads USERPROFILE on Windows
+  process.env.USERPROFILE = home;
 };
