@@ -92,6 +92,19 @@ describe('api', () => {
         const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
         await expect(client.getServerTime()).rejects.toThrow('Server time failed');
       });
+
+      it('names the URL and keeps the cause when the network fails', async () => {
+        const cause = { code: 'ETIMEDOUT' };
+        const mockFetch = jest.fn().mockRejectedValue(new TypeError('fetch failed', { cause }));
+
+        const client = createApiClient({ fetchFn: mockFetch, log: () => {} });
+        const err = await client.getServerTime().catch(e => e);
+
+        expect(err.message).toBe(
+          'fetch failed: https://www.api.air.philips.com/device/serverTime/'
+        );
+        expect(err.cause).toBe(cause);
+      });
     });
 
     describe('listDevices', () => {

@@ -9,6 +9,7 @@ const os = require('os');
 const { execSync } = require('child_process');
 const { refreshTokens, extractUserId, isTokenRevoked } = require('../lib/oauth');
 const { createApiClient } = require('../lib/api');
+const { describeFetchCause } = require('../lib/fetch-error');
 const { createMqttClient } = require('../lib/mqtt');
 const { parseShadow, parseReportedAt, mergeStatus } = require('../lib/parser');
 const {
@@ -161,17 +162,12 @@ module.exports = function (RED) {
     }
 
     // Device management
+    // The caller logs a failure once, with its cause
     async function fetchDevices() {
-      try {
-        const userId = await ensureValidToken();
-        const client = getApiClient();
-        deviceCache = await client.listDevices(userId);
-        node.log(`Found ${deviceCache.length} device(s)`);
-        return deviceCache;
-      } catch (err) {
-        node.error(`Failed to fetch devices: ${err.message}`);
-        throw err;
-      }
+      const userId = await ensureValidToken();
+      deviceCache = await getApiClient().listDevices(userId);
+      node.log(`Found ${deviceCache.length} device(s)`);
+      return deviceCache;
     }
 
     async function fetchMqttInfo(deviceId) {
@@ -595,7 +591,7 @@ module.exports = function (RED) {
         connectRetryDelayMs = CONNECT_RETRY_MIN_MS;
       } catch (err) {
         if (closed) return;
-        const cause = err.cause ? ` (cause: ${err.cause.code || err.cause.message})` : '';
+        const cause = err.cause ? ` (cause: ${describeFetchCause(err.cause)})` : '';
         if (tokenRevoked) {
           // Needs re-authentication; retrying cannot help
           node.error(`Initialization failed: ${err.message}${cause}`);
