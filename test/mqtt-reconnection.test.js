@@ -390,4 +390,59 @@ describe('MQTT Reconnection Logic', () => {
       expect(client.isConnected()).toBe(true);
     });
   });
+
+  describe('Replacing the connection', () => {
+    async function connectedClient(options) {
+      const log = jest.fn();
+      client = createMqttClient({
+        getMqttInfo: async () => mqttInfo,
+        mqttLib: mockMqttLib,
+        log,
+        ...options,
+      });
+      const connectPromise = client.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      mockMqttLib.getLastClient().simulateConnect();
+      await connectPromise;
+      return log;
+    }
+
+    async function replaceConnection() {
+      const reconnectPromise = client.connect();
+      await jest.advanceTimersByTimeAsync(6000);
+      mockMqttLib.getLastClient().simulateConnect();
+      await reconnectPromise;
+    }
+
+    it('a close event after the 5 s fallback does not mark the new connection down', async () => {
+      const onDisconnect = jest.fn();
+      const onStateChange = jest.fn();
+      await connectedClient({ onDisconnect, onStateChange });
+      const oldSocket = mockMqttLib.getLastClient();
+      oldSocket.end = () => {}; // AWS never closes it in time
+
+      await replaceConnection();
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+
+      oldSocket.emit('close');
+      oldSocket.emit(
+        'message',
+        '$aws/things/dev-bedroom/shadow/get/accepted',
+        Buffer.from(JSON.stringify({ state: { reported: { D03125: 50 } } }))
+      );
+      expect(client.isConnected()).toBe(true);
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+      expect(onStateChange).not.toHaveBeenCalled();
+    });
+
+    it('a close in time does not log the close timeout', async () => {
+      const log = await connectedClient();
+
+      await replaceConnection();
+      await jest.advanceTimersByTimeAsync(6000);
+
+      expect(log).not.toHaveBeenCalledWith('[mqtt] Close timeout, forcing disconnect');
+      expect(client.isConnected()).toBe(true);
+    });
+  });
 });

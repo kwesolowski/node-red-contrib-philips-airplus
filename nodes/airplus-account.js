@@ -286,7 +286,10 @@ module.exports = function (RED) {
           try {
             await client.getDeviceState(deviceId);
           } catch (err) {
-            node.warn(`Periodic state request for ${deviceName} failed: ${err.message}`);
+            // Close rejects a request in flight; that is not a failure to report
+            if (!closed) {
+              node.warn(`Periodic state request for ${deviceName} failed: ${err.message}`);
+            }
           }
         }
         if (!closed) schedulePoll(deviceId, deviceName);
