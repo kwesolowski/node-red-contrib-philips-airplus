@@ -164,6 +164,12 @@ module.exports = function (RED) {
       }
     }
 
+    async function fetchMqttInfo(deviceId) {
+      const userId = await ensureValidToken();
+      const infos = await getApiClient().getMqttInfo(userId, [deviceId]);
+      return infos.find(info => info.device_id === deviceId);
+    }
+
     // MQTT connection - creates one client per device
     async function connectMqtt() {
       // Disconnect existing clients
@@ -197,8 +203,15 @@ module.exports = function (RED) {
 
         node.log(`Creating MQTT client for ${deviceName} (${deviceId})`);
 
+        // The presigned URL expires: the first connect uses the one fetched above,
+        // every reconnect fetches a new one
+        let unusedMqttInfo = mqttInfo;
         const mqttClient = createMqttClient({
-          getMqttInfo: async () => mqttInfo,
+          getMqttInfo: async () => {
+            const info = unusedMqttInfo ?? (await fetchMqttInfo(deviceId));
+            unusedMqttInfo = null;
+            return info;
+          },
           onStateChange: handleStateChange,
           onShadowMessage: (shadowDeviceId, topic, message) => {
             const byTopic = lastShadows.get(shadowDeviceId) || {};
