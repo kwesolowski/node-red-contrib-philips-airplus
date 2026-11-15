@@ -5,6 +5,17 @@
 
 const EventEmitter = require('events');
 
+// Nodes a test has not closed. A failed test skips its own close, and the node's timers would
+// then keep Jest from exiting. Jest loads this helper once per test file, so the hook below
+// runs in every file that uses it.
+const openNodes = new Set();
+
+afterEach(async () => {
+  const nodes = [...openNodes];
+  openNodes.clear();
+  await Promise.all(nodes.map(node => new Promise(resolve => node.emit('close', resolve))));
+});
+
 function fakeMqttClient(options) {
   let connected = false;
   return {
@@ -69,6 +80,8 @@ function createAccountNode({ expiresAt } = {}) {
       expiresAt: expiresAt ?? farFuture,
     },
   });
+  openNodes.add(node);
+  node.on('close', () => openNodes.delete(node));
   return { node, routes, posts };
 }
 
