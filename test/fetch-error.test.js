@@ -10,7 +10,7 @@ describe('describeFetchCause', () => {
       ],
     };
     expect(describeFetchCause(cause)).toBe(
-      'ETIMEDOUT [162.159.142.13:443 ETIMEDOUT, 172.66.2.9:443 ETIMEDOUT]'
+      'ETIMEDOUT [ETIMEDOUT 162.159.142.13:443, ETIMEDOUT 172.66.2.9:443]'
     );
   });
 
@@ -22,6 +22,14 @@ describe('describeFetchCause', () => {
   test('names the host of a failed DNS lookup', () => {
     const cause = { code: 'ENOTFOUND', hostname: 'www.api.air.philips.com' };
     expect(describeFetchCause(cause)).toBe('ENOTFOUND www.api.air.philips.com');
+  });
+
+  test('does not throw on odd input', () => {
+    expect(describeFetchCause('socket hang up')).toBe('socket hang up');
+    expect(describeFetchCause({ code: 'X', errors: [null, { message: 'm' }] })).toBe(
+      'X [null, m]'
+    );
+    expect(describeFetchCause({ code: 'X', address: '10.0.0.1' })).toBe('X 10.0.0.1');
   });
 
   test('falls back to the code, then the message', () => {
