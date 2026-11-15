@@ -80,7 +80,8 @@ describe('airplus-account MQTT info', () => {
   });
 
   test('reconnects that need a token refresh at the same time share one refresh', async () => {
-    jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+    jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {});
     jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
     const clients = [];
     createMqttClient.mockImplementation(options => {
@@ -94,6 +95,7 @@ describe('airplus-account MQTT info', () => {
       getMqttInfo: jest.fn(async (userId, deviceIds) =>
         deviceIds.map(id => ({ device_id: id, host: `wss://${id}` }))
       ),
+      clearToken: jest.fn(),
     });
     const { node } = createAccountNode();
     await new Promise(setImmediate);
