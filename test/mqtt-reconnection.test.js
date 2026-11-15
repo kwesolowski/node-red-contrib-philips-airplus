@@ -491,4 +491,60 @@ describe('MQTT Reconnection Logic', () => {
       expect(mockMqttLib.getAllClients()).toHaveLength(0);
     });
   });
+
+  describe('Circuit breaker and concurrent connects', () => {
+    it('reconnects after the circuit breaker has opened', async () => {
+      const log = jest.fn();
+      let failures = 0;
+      const autoConnectLib = new MockMqttLib();
+      const libConnect = autoConnectLib.connect.bind(autoConnectLib);
+      autoConnectLib.connect = (url, opts) => {
+        const socket = libConnect(url, opts);
+        setTimeout(() => socket.simulateConnect(), 1);
+        return socket;
+      };
+      client = createMqttClient({
+        getMqttInfo: async () => {
+          if (failures < 12) {
+            failures++;
+            throw new Error('fetch failed');
+          }
+          return mqttInfo;
+        },
+        onError: () => {},
+        mqttLib: autoConnectLib,
+        log,
+      });
+      client.subscribeDevice('dev-bedroom');
+
+      await expect(client.connect()).rejects.toThrow('fetch failed');
+      for (let minute = 0; minute < 40 && !client.isConnected(); minute++) {
+        await jest.advanceTimersByTimeAsync(60 * 1000);
+      }
+
+      expect(failures).toBe(12);
+      expect(client.isConnected()).toBe(true);
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/^\[mqtt\] Circuit breaker OPEN/));
+
+      // No retry left over from the open breaker replaces the good connection
+      const sockets = autoConnectLib.getAllClients().length;
+      await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(autoConnectLib.getAllClients()).toHaveLength(sockets);
+    });
+
+    it('two connects started together open one connection', async () => {
+      client = createMqttClient({
+        getMqttInfo: async () => mqttInfo,
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+      const first = client.connect();
+      const second = client.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      mockMqttLib.getLastClient().simulateConnect();
+      await Promise.all([first, second]);
+
+      expect(mockMqttLib.getAllClients()).toHaveLength(1);
+    });
+  });
 });
