@@ -30,6 +30,8 @@ describe('describeFetchCause', () => {
       'X [null, m]'
     );
     expect(describeFetchCause({ code: 'X', address: '10.0.0.1' })).toBe('X 10.0.0.1');
+    expect(describeFetchCause(Object.create(null))).toBe('unprintable cause');
+    expect(describeFetchCause({ code: Symbol('s'), errors: [1] })).toBe('unprintable cause');
   });
 
   test('falls back to the code, then the message', () => {

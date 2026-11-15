@@ -591,13 +591,13 @@ module.exports = function (RED) {
         connectRetryDelayMs = CONNECT_RETRY_MIN_MS;
       } catch (err) {
         if (closed) return;
-        const cause = err.cause ? ` (cause: ${describeFetchCause(err.cause)})` : '';
+        const cause = err?.cause ? ` (cause: ${describeFetchCause(err.cause)})` : '';
         if (tokenRevoked) {
           // Needs re-authentication; retrying cannot help
-          node.error(`Initialization failed: ${err.message}${cause}`);
+          node.error(`Initialization failed: ${err?.message ?? err}${cause}`);
         } else {
           const delayS = Math.round(connectRetryDelayMs / 1000);
-          node.error(`Initialization failed: ${err.message}${cause}, retrying in ${delayS}s`);
+          node.error(`Initialization failed: ${err?.message ?? err}${cause}, retrying in ${delayS}s`);
           connectRetryTimer = setTimeout(fetchDevicesAndConnect, connectRetryDelayMs);
           connectRetryDelayMs = Math.min(connectRetryDelayMs * 2, CONNECT_RETRY_MAX_MS);
         }
