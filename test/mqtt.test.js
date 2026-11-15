@@ -154,6 +154,26 @@ describe('mqtt', () => {
       expect(subs).toContain('$aws/things/dev-123/shadow/update/delta');
     });
 
+    it('subscribes the topics once when a device is added before connect and again after', async () => {
+      client = createMqttClient({
+        getMqttInfo: () =>
+          Promise.resolve({ host: 'wss://mqtt.example.com', client_id: 'c', device_id: 'dev-123' }),
+        mqttLib: mockMqttLib,
+        log: () => {},
+      });
+
+      client.subscribeDevice('dev-123');
+      const connectPromise = client.connect();
+      setTimeout(() => mockMqttLib.getLastClient().simulateConnect(), 10);
+      await connectPromise;
+      client.subscribeDevice('dev-123');
+      client.subscribeDevice('dev-123');
+
+      const subs = mockMqttLib.getLastClient().subscriptions;
+      expect(subs.filter(t => t === '$aws/things/dev-123/shadow/get/accepted')).toHaveLength(1);
+      expect(subs).toHaveLength(5);
+    });
+
     it('skips subscription for unauthorized devices', async () => {
       client = createMqttClient({
         getMqttInfo: () =>
